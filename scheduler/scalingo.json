@@ -1,0 +1,62 @@
+{
+  "name": "kalgarden-scheduler",
+  "description": "Hybrid AI-Assisted School Scheduling System for Kålgårdens Grundskola",
+  "repository": "https://github.com/yourusername/kalgarden-scheduler",
+  "formation": {
+    "web": {
+      "amount": 1,
+      "size": "S"
+    }
+  },
+  "addons": [
+    {
+      "plan": "postgresql:postgresql-starter-512"
+    }
+  ],
+  "env": {
+    "AZURE_AI_ENDPOINT": {
+      "description": "Azure OpenAI endpoint for Claude model",
+      "value": "https://tankomchattbot.services.ai.azure.com/anthropic/v1/messages",
+      "required": true
+    },
+    "AZURE_API_KEY": {
+      "description": "Azure API key for Claude Sonnet 4.5",
+      "required": true
+    },
+    "ANTHROPIC_MODEL": {
+      "description": "Claude model deployment name",
+      "value": "claude-sonnet-4-5-20250929",
+      "required": false
+    },
+    "DATABASE_URL": {
+      "description": "PostgreSQL database URL (auto-configured by addon)",
+      "required": false
+    },
+    "MAX_SOLVE_TIME_SECONDS": {
+      "description": "Maximum time for OR-Tools solver",
+      "value": "60",
+      "required": false
+    },
+    "DEBUG": {
+      "description": "Enable debug mode",
+      "value": "false",
+      "required": false
+    },
+    "ALLOWED_ORIGINS": {
+      "description": "CORS allowed origins (comma-separated)",
+      "value": "https://kalgarden-scheduler.osc-fr1.scalingo.io",
+      "required": false
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "https://github.com/Scalingo/python-buildpack"
+    },
+    {
+      "url": "https://github.com/Scalingo/nodejs-buildpack"
+    }
+  ],
+  "scripts": {
+    "postdeploy": "echo 'Frontend built successfully. Database migrations will run automatically via release process.'"
+  }
+}

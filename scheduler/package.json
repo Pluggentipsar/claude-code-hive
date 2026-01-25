@@ -1,0 +1,14 @@
+{
+  "name": "kalgarden-scheduler",
+  "version": "1.0.0",
+  "description": "Hybrid AI-Assisted School Scheduling System for Kålgårdens Grundskola",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "postinstall": "cd frontend && npm install"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

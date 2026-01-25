@@ -1,0 +1,7 @@
+# Scalingo Procfile - Process definitions
+
+# Web process - FastAPI backend
+web: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+# Release process - Run database migrations
+release: cd backend && alembic upgrade head

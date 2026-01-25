@@ -1,0 +1,24 @@
+# Minimal requirements för att testa frontend-backend integration
+# Utan databas och avancerade features
+
+# Web Framework (endast nödvändigt för att starta servern)
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# CORS och basic support
+python-dotenv>=1.0.0
+
+# Configuration (needed by config.py)
+pydantic-settings>=2.0.0
+
+# Database ORM (without PostgreSQL driver)
+sqlalchemy>=2.0.0
+
+# Constraint Programming (scheduler core)
+ortools>=9.11.0
+
+# Data utilities
+python-dateutil>=2.9.0
+
+# AI Integration
+httpx>=0.24.0

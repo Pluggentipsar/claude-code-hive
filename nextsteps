@@ -1,0 +1,8 @@
+Next Steps
+Now we need to implement the core scheduling algorithm that will:
+
+Auto-match staff to student care times - Match Fadi's 06:00-14:00 availability with William's 06:00-08:00 need
+Match care needs with certified staff - Ensure Niklas (epilepsy) gets Fadi, Ivan (diabetes) gets Jeanette
+Handle double-staffing - Ivan needs 2 staff members simultaneously
+Redistribute staff between classes - Balance workload across grade groups (1-3 helps 1-3, 4-6 helps 4-6)
+Ska jag börja implementera själva scheduling-algoritmen med OR-Tools som matchar personal till elever baserat på dessa constraints?

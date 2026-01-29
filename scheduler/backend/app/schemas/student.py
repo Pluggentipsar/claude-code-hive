@@ -16,6 +16,36 @@ class CareTimeBase(BaseModel):
     end_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="End time (HH:MM)")
 
 
+class CareTimeCreate(CareTimeBase):
+    """Schema for creating a care time."""
+
+    valid_from: datetime
+    valid_to: Optional[datetime] = None
+
+
+class CareTimeUpdate(BaseModel):
+    """Schema for updating a care time."""
+
+    weekday: Optional[int] = Field(None, ge=0, le=6)
+    start_time: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
+    end_time: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
+    valid_from: Optional[datetime] = None
+    valid_to: Optional[datetime] = None
+
+
+class CareTimeResponse(CareTimeBase):
+    """Schema for care time response."""
+
+    id: UUID
+    student_id: UUID
+    valid_from: datetime
+    valid_to: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class StudentCreate(BaseModel):
     """Request schema for creating a student."""
 

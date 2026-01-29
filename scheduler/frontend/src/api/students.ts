@@ -3,7 +3,7 @@
  */
 
 import apiClient from './client';
-import type { Student, StudentCreate, StudentUpdate } from '../types';
+import type { Student, StudentCreate, StudentUpdate, CareTime, CareTimeCreate, CareTimeUpdate } from '../types';
 
 export const studentsApi = {
   /**
@@ -43,5 +43,38 @@ export const studentsApi = {
    */
   async delete(id: string): Promise<void> {
     await apiClient.delete(`/students/${id}/`);
+  },
+
+  // ========== Care Times ==========
+
+  /**
+   * Get all care times for a student
+   */
+  async getCareTimes(studentId: string): Promise<CareTime[]> {
+    const response = await apiClient.get<CareTime[]>(`/students/${studentId}/care-times/`);
+    return response.data;
+  },
+
+  /**
+   * Create a care time for a student
+   */
+  async createCareTime(studentId: string, data: CareTimeCreate): Promise<CareTime> {
+    const response = await apiClient.post<CareTime>(`/students/${studentId}/care-times/`, data);
+    return response.data;
+  },
+
+  /**
+   * Update a care time
+   */
+  async updateCareTime(careTimeId: string, data: CareTimeUpdate): Promise<CareTime> {
+    const response = await apiClient.put<CareTime>(`/students/care-times/${careTimeId}/`, data);
+    return response.data;
+  },
+
+  /**
+   * Delete a care time
+   */
+  async deleteCareTime(careTimeId: string): Promise<void> {
+    await apiClient.delete(`/students/care-times/${careTimeId}/`);
   },
 };

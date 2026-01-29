@@ -18,6 +18,8 @@ from app.schemas.schedule import (
     ScheduleDetailResponse,
     AssignmentResponse,
 )
+from app.schemas.coverage import CoverageGapsResponse
+from app.schemas.absence import AbsenceImpactResponse, TestAbsenceRequest, StaffSuggestion as StaffSuggestionSchema
 from app.core import SchoolScheduler, SchedulingError
 from app.services import AIAdvisorService
 
@@ -131,6 +133,169 @@ async def generate_schedule(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate schedule: {str(e)}"
         )
+
+
+@router.post("/test-absence", response_model=AbsenceImpactResponse)
+async def test_absence_impact(
+    test_request: TestAbsenceRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Simulate an absence and analyze its impact WITHOUT saving to database.
+
+    This endpoint allows users to preview the impact of an absence before
+    actually creating it. It shows:
+    - Whether the schedule can still be generated
+    - Which students are affected
+    - Suggested substitute staff members
+    - Overall severity of the impact
+
+    Args:
+        test_request: Absence details to test
+        db: Database session
+
+    Returns:
+        AbsenceImpactResponse with detailed impact analysis
+    """
+    try:
+        # Get the staff member
+        staff = db.query(Staff).filter(
+            Staff.id == test_request.staff_id,
+            Staff.active.is_(True)
+        ).first()
+
+        if not staff:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Staff member {test_request.staff_id} not found"
+            )
+
+        # Find affected students (students assigned to this staff member)
+        affected_students = []
+        schedule = db.query(Schedule).filter(
+            Schedule.week_number == test_request.week_number,
+            Schedule.year == test_request.year
+        ).first()
+
+        if schedule:
+            # Get students from existing assignments
+            student_ids = set()
+            for assignment in schedule.assignments:
+                if assignment.staff_id == test_request.staff_id:
+                    if assignment.student_id:
+                        student_ids.add(assignment.student_id)
+
+            if student_ids:
+                students = db.query(Student).filter(
+                    Student.id.in_(student_ids),
+                    Student.active.is_(True)
+                ).all()
+                affected_students = students
+        else:
+            # No schedule exists yet - get all students who might need this staff
+            # based on care requirements and certifications
+            if staff.care_certifications:
+                students = db.query(Student).filter(
+                    Student.active.is_(True),
+                    Student.has_care_needs.is_(True)
+                ).all()
+
+                # Filter by matching care requirements
+                affected_students = [
+                    s for s in students
+                    if s.care_requirements and
+                    any(req in staff.care_certifications for req in s.care_requirements)
+                ]
+
+        # Find substitute staff
+        from app.services.substitute_finder import SubstituteFinder
+        substitute_finder = SubstituteFinder()
+
+        all_staff = db.query(Staff).filter(Staff.active.is_(True)).all()
+
+        substitute_suggestions = substitute_finder.find_substitutes(
+            absent_staff=staff,
+            affected_students=affected_students,
+            all_staff=all_staff,
+            week_number=test_request.week_number,
+            year=test_request.year,
+            schedule=schedule,
+        )
+
+        # Calculate severity
+        severity = _calculate_impact_severity(
+            affected_students=affected_students,
+            substitute_suggestions=substitute_suggestions,
+            schedule=schedule,
+        )
+
+        # Determine if schedule can still be generated
+        can_generate = True
+        message = "Schemat kan fortfarande genereras."
+
+        if severity == "critical":
+            can_generate = len(substitute_suggestions) > 0
+            if not can_generate:
+                message = "VARNING: Inga kvalificerade vikarier tillgängliga. Schemat kan bli INFEASIBLE."
+            else:
+                message = f"Kritisk påverkan. {len(substitute_suggestions)} möjliga vikarier hittade."
+        elif severity == "major":
+            message = f"Större påverkan. {len(affected_students)} elever påverkas."
+        elif severity == "minor":
+            message = f"Mindre påverkan. {len(affected_students)} elever påverkas men vikarier finns."
+
+        # Convert affected students to summaries
+        student_summaries = [
+            {
+                "id": s.id,
+                "full_name": f"{s.first_name} {s.last_name}",
+                "grade": s.grade,
+                "requires_double_staffing": s.requires_double_staffing,
+            }
+            for s in affected_students
+        ]
+
+        return AbsenceImpactResponse(
+            can_generate=can_generate,
+            affected_students=student_summaries,
+            alternative_staff=substitute_suggestions[:5],  # Top 5 suggestions
+            severity=severity,
+            message=message,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to test absence impact: {str(e)}"
+        )
+
+
+def _calculate_impact_severity(
+    affected_students: List[Student],
+    substitute_suggestions: List[Dict],
+    schedule: Optional[Schedule],
+) -> str:
+    """Calculate overall impact severity."""
+    num_affected = len(affected_students)
+    num_substitutes = len(substitute_suggestions)
+
+    # Check for critical cases
+    has_double_staffing = any(s.requires_double_staffing for s in affected_students)
+
+    if num_affected == 0:
+        return "no_impact"
+    elif num_affected >= 5 and num_substitutes == 0:
+        return "critical"
+    elif has_double_staffing and num_substitutes < 2:
+        return "critical"
+    elif num_affected >= 5:
+        return "major"
+    elif num_affected >= 2:
+        return "minor"
+    else:
+        return "minor"
 
 
 @router.get("/{schedule_id}", response_model=ScheduleDetailResponse)
@@ -392,4 +557,53 @@ async def get_schedule_summary(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate summary: {str(e)}"
+        )
+
+
+@router.get("/{schedule_id}/coverage-gaps", response_model=CoverageGapsResponse)
+async def analyze_coverage_gaps(
+    schedule_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Analyze schedule for staffing gaps and coverage issues.
+
+    Returns:
+        - understaffed_timeslots: Timeslots with insufficient staff
+        - uncovered_students: Students with no assignments
+        - double_staffing_violations: Students requiring double staffing but only have single staff
+        - total_gaps: Total number of gaps found
+        - critical_gaps: Number of critical gaps
+
+    Args:
+        schedule_id: UUID of the schedule to analyze
+        db: Database session
+
+    Returns:
+        CoverageGapsResponse with detailed gap analysis
+    """
+    schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
+
+    if not schedule:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Schedule {schedule_id} not found"
+        )
+
+    try:
+        # Get all students and staff
+        students = db.query(Student).filter(Student.active.is_(True)).all()
+        staff = db.query(Staff).filter(Staff.active.is_(True)).all()
+
+        # Analyze coverage
+        from app.services.coverage_analyzer import CoverageAnalyzer
+        analyzer = CoverageAnalyzer()
+        gaps_data = analyzer.analyze_schedule(schedule, students, staff)
+
+        return CoverageGapsResponse(**gaps_data)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to analyze coverage gaps: {str(e)}"
         )

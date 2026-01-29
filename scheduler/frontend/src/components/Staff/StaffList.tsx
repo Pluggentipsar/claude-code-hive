@@ -3,8 +3,11 @@
  */
 
 import { useState } from 'react';
-import type { Staff } from '../../types';
+import type { Staff, AbsenceCreate } from '../../types';
 import { Button } from '../Common/Button';
+import { AbsenceForm } from './AbsenceForm';
+import { staffApi } from '../../api/staff';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface StaffListProps {
   staff: Staff[];
@@ -15,6 +18,10 @@ interface StaffListProps {
 export function StaffList({ staff, onStaffSelect, onCreateNew }: StaffListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
+  const [showAbsenceForm, setShowAbsenceForm] = useState(false);
+  const [selectedStaffForAbsence, setSelectedStaffForAbsence] = useState<Staff | null>(null);
+  const [isSubmittingAbsence, setIsSubmittingAbsence] = useState(false);
+  const queryClient = useQueryClient();
 
   // Filter staff
   const filteredStaff = staff.filter((member) => {
@@ -52,6 +59,34 @@ export function StaffList({ staff, onStaffSelect, onCreateNew }: StaffListProps)
         return '🎨';
       default:
         return '👔';
+    }
+  };
+
+  const handleQuickAbsenceReport = (member: Staff, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering onStaffSelect
+    setSelectedStaffForAbsence(member);
+    setShowAbsenceForm(true);
+  };
+
+  const handleAbsenceSubmit = async (data: AbsenceCreate) => {
+    if (!selectedStaffForAbsence) return;
+
+    setIsSubmittingAbsence(true);
+    try {
+      await staffApi.createAbsence(selectedStaffForAbsence.id, data);
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['absences'] });
+
+      setShowAbsenceForm(false);
+      setSelectedStaffForAbsence(null);
+    } catch (error) {
+      console.error('Failed to create absence:', error);
+      alert('Kunde inte anmäla frånvaro. Försök igen.');
+    } finally {
+      setIsSubmittingAbsence(false);
     }
   };
 
@@ -95,11 +130,13 @@ export function StaffList({ staff, onStaffSelect, onCreateNew }: StaffListProps)
           filteredStaff.map((member) => (
             <div
               key={member.id}
-              onClick={() => onStaffSelect(member)}
-              className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+              className="p-4 hover:bg-gray-50 transition-colors group"
             >
               <div className="flex items-start justify-between">
-                <div className="flex-1">
+                <div
+                  className="flex-1 cursor-pointer"
+                  onClick={() => onStaffSelect(member)}
+                >
                   <div className="flex items-center space-x-2">
                     <span className="text-xl">{getRoleIcon(member.role)}</span>
                     <h3 className="font-semibold text-gray-900">
@@ -125,9 +162,23 @@ export function StaffList({ staff, onStaffSelect, onCreateNew }: StaffListProps)
                     )}
                   </div>
                 </div>
-                <button className="text-gray-400 hover:text-gray-600">
-                  →
-                </button>
+
+                {/* Quick action buttons */}
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={(e) => handleQuickAbsenceReport(member, e)}
+                    className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Snabb frånvaroanmälan"
+                  >
+                    🤒 Anmäl frånvaro
+                  </button>
+                  <button
+                    onClick={() => onStaffSelect(member)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    →
+                  </button>
+                </div>
               </div>
             </div>
           ))
@@ -137,6 +188,19 @@ export function StaffList({ staff, onStaffSelect, onCreateNew }: StaffListProps)
           </div>
         )}
       </div>
+
+      {/* Absence form modal */}
+      {showAbsenceForm && selectedStaffForAbsence && (
+        <AbsenceForm
+          staff={selectedStaffForAbsence}
+          onClose={() => {
+            setShowAbsenceForm(false);
+            setSelectedStaffForAbsence(null);
+          }}
+          onSubmit={handleAbsenceSubmit}
+          isSubmitting={isSubmittingAbsence}
+        />
+      )}
     </div>
   );
 }

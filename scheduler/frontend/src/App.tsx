@@ -5,7 +5,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MainLayout } from './components/Layout/MainLayout';
-import { SchedulePage, StudentsPage, StaffPage } from './pages';
+import { SchedulePage, StudentsPage, StaffPage, ClassesPage } from './pages';
+import { ImportPage } from './pages/ImportPage';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -27,6 +28,8 @@ function App() {
             <Route path="/" element={<SchedulePage />} />
             <Route path="/students" element={<StudentsPage />} />
             <Route path="/staff" element={<StaffPage />} />
+            <Route path="/classes" element={<ClassesPage />} />
+            <Route path="/import" element={<ImportPage />} />
           </Routes>
         </MainLayout>
       </BrowserRouter>

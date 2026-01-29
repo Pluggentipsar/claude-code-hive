@@ -3,7 +3,7 @@
  */
 
 import apiClient from './client';
-import type { Staff, StaffCreate, StaffUpdate, Absence, AbsenceCreate } from '../types';
+import type { Staff, StaffCreate, StaffUpdate, Absence, AbsenceCreate, WorkHour, WorkHourCreate, WorkHourUpdate } from '../types';
 
 export const staffApi = {
   /**
@@ -66,5 +66,38 @@ export const staffApi = {
    */
   async deleteAbsence(absenceId: string): Promise<void> {
     await apiClient.delete(`/staff/absences/${absenceId}/`);
+  },
+
+  // ========== Work Hours ==========
+
+  /**
+   * Get all work hours for a staff member
+   */
+  async getWorkHours(staffId: string): Promise<WorkHour[]> {
+    const response = await apiClient.get<WorkHour[]>(`/staff/${staffId}/work-hours/`);
+    return response.data;
+  },
+
+  /**
+   * Create a work hour for a staff member
+   */
+  async createWorkHour(staffId: string, data: WorkHourCreate): Promise<WorkHour> {
+    const response = await apiClient.post<WorkHour>(`/staff/${staffId}/work-hours/`, data);
+    return response.data;
+  },
+
+  /**
+   * Update a work hour
+   */
+  async updateWorkHour(workHourId: string, data: WorkHourUpdate): Promise<WorkHour> {
+    const response = await apiClient.put<WorkHour>(`/staff/work-hours/${workHourId}/`, data);
+    return response.data;
+  },
+
+  /**
+   * Delete a work hour
+   */
+  async deleteWorkHour(workHourId: string): Promise<void> {
+    await apiClient.delete(`/staff/work-hours/${workHourId}/`);
   },
 };

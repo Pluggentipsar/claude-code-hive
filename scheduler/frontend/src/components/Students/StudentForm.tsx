@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import type { Student, StudentCreate, StudentUpdate } from '../../types';
 import { Button } from '../Common/Button';
+import { CareTimesTable } from './CareTimesTable';
 
 interface StudentFormProps {
   student?: Student | null;
@@ -153,6 +154,13 @@ export function StudentForm({ student, onSubmit, onCancel, isLoading }: StudentF
           placeholder="Eventuella anteckningar om eleven..."
         />
       </div>
+
+      {/* Care Times - Only show when editing existing student */}
+      {student && (
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <CareTimesTable studentId={student.id} />
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex space-x-3 pt-4 border-t">

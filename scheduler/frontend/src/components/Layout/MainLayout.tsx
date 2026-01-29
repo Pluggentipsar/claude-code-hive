@@ -15,6 +15,8 @@ const navItems: NavItem[] = [
   { name: 'Schema', path: '/', icon: '📅' },
   { name: 'Elever', path: '/students', icon: '👨‍🎓' },
   { name: 'Personal', path: '/staff', icon: '👤' },
+  { name: 'Klasser', path: '/classes', icon: '📚' },
+  { name: 'Import/Export', path: '/import', icon: '📥' },
 ];
 
 export function MainLayout({ children }: { children: React.ReactNode }) {

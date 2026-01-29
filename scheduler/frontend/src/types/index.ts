@@ -65,6 +65,33 @@ export interface StudentUpdate {
   active?: boolean;
 }
 
+export interface CareTime {
+  id: string;
+  student_id: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  valid_from: string;
+  valid_to: string | null;
+  created_at: string;
+}
+
+export interface CareTimeCreate {
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  valid_from: string;
+  valid_to?: string;
+}
+
+export interface CareTimeUpdate {
+  weekday?: number;
+  start_time?: string;
+  end_time?: string;
+  valid_from?: string;
+  valid_to?: string;
+}
+
 // ============================================================================
 // STAFF TYPES
 // ============================================================================
@@ -116,6 +143,66 @@ export interface AbsenceCreate {
   start_time?: string;
   end_time?: string;
   reason: AbsenceReason;
+}
+
+export interface WorkHour {
+  id: string;
+  staff_id: string;
+  weekday: number;
+  week_number: number;
+  start_time: string;
+  end_time: string;
+  lunch_start: string | null;
+  lunch_end: string | null;
+  created_at: string;
+}
+
+export interface WorkHourCreate {
+  weekday: number;
+  week_number: number;
+  start_time: string;
+  end_time: string;
+  lunch_start?: string;
+  lunch_end?: string;
+}
+
+export interface WorkHourUpdate {
+  weekday?: number;
+  week_number?: number;
+  start_time?: string;
+  end_time?: string;
+  lunch_start?: string;
+  lunch_end?: string;
+}
+
+// ============================================================================
+// SCHOOL CLASS TYPES
+// ============================================================================
+
+export interface SchoolClass {
+  id: string;
+  name: string;
+  grade_group: GradeGroup;
+  primary_teacher_id: string | null;
+  academic_year: string;
+  active: boolean;
+  created_at: string;
+  student_count: number;
+}
+
+export interface SchoolClassCreate {
+  name: string;
+  grade_group: GradeGroup;
+  primary_teacher_id?: string;
+  academic_year: string;
+}
+
+export interface SchoolClassUpdate {
+  name?: string;
+  grade_group?: GradeGroup;
+  primary_teacher_id?: string;
+  academic_year?: string;
+  active?: boolean;
 }
 
 // ============================================================================
@@ -189,6 +276,68 @@ export interface PredictedProblem {
   impact: string;
   preventive_actions: string[];
   early_warning_signs: string[];
+}
+
+// ============================================================================
+// ABSENCE IMPACT TYPES
+// ============================================================================
+
+export interface StaffSuggestion {
+  id: string;
+  full_name: string;
+  role: StaffRole;
+  care_certifications: string[];
+  match_score: number;
+  available_hours: number;
+  matching_certifications: string[];
+  reason: string;
+}
+
+export interface StudentSummary {
+  id: string;
+  full_name: string;
+  grade: number;
+  requires_double_staffing: boolean;
+}
+
+export interface AbsenceImpactResponse {
+  can_generate: boolean;
+  affected_students: StudentSummary[];
+  alternative_staff: StaffSuggestion[];
+  severity: 'no_impact' | 'minor' | 'major' | 'critical';
+  message?: string;
+}
+
+export interface TestAbsenceRequest {
+  staff_id: string;
+  absence_date: string;
+  start_time?: string;
+  end_time?: string;
+  week_number: number;
+  year: number;
+}
+
+// ============================================================================
+// COVERAGE GAP TYPES
+// ============================================================================
+
+export interface TimeslotGap {
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  required_staff: number;
+  available_staff: number;
+  affected_students: string[];
+  severity: 'critical' | 'warning' | 'ok';
+}
+
+export interface CoverageGapsResponse {
+  schedule_id: string;
+  total_gaps: number;
+  critical_gaps: number;
+  understaffed_timeslots: TimeslotGap[];
+  uncovered_students: StudentSummary[];
+  double_staffing_violations: StudentSummary[];
 }
 
 // ============================================================================

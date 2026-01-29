@@ -1,51 +1,51 @@
 /**
- * Staff management page
+ * Classes management page
  */
 
 import { useState } from 'react';
-import { useStaff, useCreateStaff, useUpdateStaff } from '../hooks/useStaff';
-import { StaffList } from '../components/Staff/StaffList';
-import { StaffForm } from '../components/Staff/StaffForm';
+import { useClasses, useCreateClass, useUpdateClass } from '../hooks/useClasses';
+import { ClassList } from '../components/Classes/ClassList';
+import { ClassForm } from '../components/Classes/ClassForm';
 import { LoadingSpinner } from '../components/Common/LoadingSpinner';
 import { ErrorMessage } from '../components/Common/ErrorMessage';
 import { getErrorMessage } from '../api';
-import type { Staff } from '../types';
+import type { SchoolClass } from '../types';
 
-export function StaffPage() {
-  const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+export function ClassesPage() {
+  const [selectedClass, setSelectedClass] = useState<SchoolClass | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const { data: staff, isLoading, error } = useStaff();
-  const createMutation = useCreateStaff();
-  const updateMutation = useUpdateStaff();
+  const { data: classes, isLoading, error } = useClasses();
+  const createMutation = useCreateClass();
+  const updateMutation = useUpdateClass();
 
   const handleCreateNew = () => {
-    setSelectedStaff(null);
+    setSelectedClass(null);
     setShowForm(true);
   };
 
-  const handleStaffSelect = (staff: Staff) => {
-    setSelectedStaff(staff);
+  const handleClassSelect = (schoolClass: SchoolClass) => {
+    setSelectedClass(schoolClass);
     setShowForm(true);
   };
 
   const handleSubmit = async (data: any) => {
     try {
-      if (selectedStaff) {
-        await updateMutation.mutateAsync({ id: selectedStaff.id, data });
+      if (selectedClass) {
+        await updateMutation.mutateAsync({ id: selectedClass.id, data });
       } else {
         await createMutation.mutateAsync(data);
       }
       setShowForm(false);
-      setSelectedStaff(null);
+      setSelectedClass(null);
     } catch (err) {
-      console.error('Failed to save staff:', err);
+      console.error('Failed to save class:', err);
     }
   };
 
   const handleCancel = () => {
     setShowForm(false);
-    setSelectedStaff(null);
+    setSelectedClass(null);
   };
 
   if (isLoading) {
@@ -59,7 +59,7 @@ export function StaffPage() {
   if (error) {
     return (
       <div className="p-6">
-        <ErrorMessage message={`Kunde inte hämta personal: ${getErrorMessage(error)}`} />
+        <ErrorMessage message={`Kunde inte hämta klasser: ${getErrorMessage(error)}`} />
       </div>
     );
   }
@@ -68,21 +68,21 @@ export function StaffPage() {
     <div className="p-6">
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Staff list */}
+          {/* Class list */}
           <div>
-            <StaffList
-              staff={staff || []}
-              onStaffSelect={handleStaffSelect}
+            <ClassList
+              classes={classes || []}
+              onClassSelect={handleClassSelect}
               onCreateNew={handleCreateNew}
             />
           </div>
 
-          {/* Staff form */}
+          {/* Class form */}
           <div>
             {showForm ? (
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-6">
-                  {selectedStaff ? 'Redigera Personal' : 'Ny Personal'}
+                  {selectedClass ? 'Redigera Klass' : 'Ny Klass'}
                 </h2>
 
                 {createMutation.isError && (
@@ -101,8 +101,8 @@ export function StaffPage() {
                   </div>
                 )}
 
-                <StaffForm
-                  staff={selectedStaff}
+                <ClassForm
+                  schoolClass={selectedClass}
                   onSubmit={handleSubmit}
                   onCancel={handleCancel}
                   isLoading={createMutation.isPending || updateMutation.isPending}
@@ -111,13 +111,13 @@ export function StaffPage() {
             ) : (
               <div className="bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
                 <p className="text-gray-500 mb-4">
-                  Välj en personal från listan eller skapa en ny
+                  Välj en klass från listan eller skapa en ny
                 </p>
                 <button
                   onClick={handleCreateNew}
                   className="text-primary-600 hover:text-primary-700 font-medium"
                 >
-                  + Lägg till ny personal
+                  + Lägg till ny klass
                 </button>
               </div>
             )}

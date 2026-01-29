@@ -12,11 +12,17 @@ from app.schemas.student import (
     StudentCreate,
     StudentUpdate,
     StudentResponse,
+    CareTimeCreate,
+    CareTimeUpdate,
+    CareTimeResponse,
 )
 from app.schemas.staff import (
     StaffCreate,
     StaffUpdate,
     StaffResponse,
+    WorkHourCreate,
+    WorkHourUpdate,
+    WorkHourResponse,
     AbsenceCreate,
     AbsenceResponse,
 )
@@ -31,10 +37,16 @@ __all__ = [
     "StudentCreate",
     "StudentUpdate",
     "StudentResponse",
+    "CareTimeCreate",
+    "CareTimeUpdate",
+    "CareTimeResponse",
     # Staff
     "StaffCreate",
     "StaffUpdate",
     "StaffResponse",
+    "WorkHourCreate",
+    "WorkHourUpdate",
+    "WorkHourResponse",
     "AbsenceCreate",
     "AbsenceResponse",
 ]

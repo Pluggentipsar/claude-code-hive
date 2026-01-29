@@ -5,11 +5,15 @@ Handles parsing of existing Excel schedules and exporting generated schedules.
 """
 
 import openpyxl
+import openpyxl.comments
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
 import pandas as pd
 from datetime import datetime, time, date
 from typing import Dict, List, Any, Optional, Tuple
 import re
 from pathlib import Path
+from io import BytesIO
 
 from app.models import (
     Student, Staff, SchoolClass, CareTime, WorkHour, Absence,
@@ -672,3 +676,338 @@ def import_to_database(parsed_data: Dict[str, Any], db_session) -> Dict[str, Any
         'staff': list(staff_map.values()),
         'classes': list(class_map.values()),
     }
+
+
+class ExcelTemplateService:
+    """
+    Service for generating clean Excel templates for data import.
+
+    Creates a structured template with separate sheets for:
+    - Students
+    - Staff
+    - Classes
+    - Care Times
+    - Work Hours
+    - Instructions (Swedish)
+    """
+
+    @staticmethod
+    def generate_template() -> bytes:
+        """
+        Generate a clean Excel template for bulk data import.
+
+        Returns:
+            bytes: Excel file content
+        """
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from io import BytesIO
+
+        wb = Workbook()
+
+        # Remove default sheet
+        if 'Sheet' in wb.sheetnames:
+            del wb['Sheet']
+
+        # Sheet 1: Instructions
+        instructions_sheet = wb.create_sheet("📖 Instruktioner", 0)
+        ExcelTemplateService._create_instructions_sheet(instructions_sheet)
+
+        # Sheet 2: Students
+        students_sheet = wb.create_sheet("👶 Elever", 1)
+        ExcelTemplateService._create_students_sheet(students_sheet)
+
+        # Sheet 3: Staff
+        staff_sheet = wb.create_sheet("👤 Personal", 2)
+        ExcelTemplateService._create_staff_sheet(staff_sheet)
+
+        # Sheet 4: Classes
+        classes_sheet = wb.create_sheet("📚 Klasser", 3)
+        ExcelTemplateService._create_classes_sheet(classes_sheet)
+
+        # Sheet 5: Care Times
+        care_times_sheet = wb.create_sheet("⏰ Omsorgstider", 4)
+        ExcelTemplateService._create_care_times_sheet(care_times_sheet)
+
+        # Sheet 6: Work Hours
+        work_hours_sheet = wb.create_sheet("💼 Arbetstider", 5)
+        ExcelTemplateService._create_work_hours_sheet(work_hours_sheet)
+
+        # Save to bytes
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return output.getvalue()
+
+    @staticmethod
+    def _create_instructions_sheet(sheet):
+        """Create instructions sheet with Swedish guidance."""
+        from openpyxl.styles import Font, PatternFill, Alignment
+
+        # Title
+        sheet['A1'] = "Instruktioner för Excel-import"
+        sheet['A1'].font = Font(bold=True, size=16)
+
+        instructions = [
+            "",
+            "Välkommen! Detta är mallen för att importera elever, personal och scheman i bulk.",
+            "",
+            "📋 STEG FÖR STEG:",
+            "1. Fyll i arket '📚 Klasser' först - ange alla klasser",
+            "2. Fyll i arket '👶 Elever' - namn, årskurs, klass",
+            "3. Fyll i arket '👤 Personal' - namn, roll, certifieringar",
+            "4. Fyll i arket '⏰ Omsorgstider' - när varje elev behöver omsorg",
+            "5. Fyll i arket '💼 Arbetstider' - när varje personal arbetar",
+            "6. Spara filen och ladda upp den i systemet",
+            "",
+            "⚠️ VIKTIGT:",
+            "• Ändra INTE kolumnrubrikerna - systemet förväntar sig exakt dessa namn",
+            "• Namn måste vara unika (förnamn + efternamn)",
+            "• Tider ska vara i format HH:MM (t.ex. 08:00, 16:30)",
+            "• Veckodagar: 0 = Måndag, 1 = Tisdag, 2 = Onsdag, 3 = Torsdag, 4 = Fredag",
+            "• Årskurser: 0-6 (F-6)",
+            "",
+            "💡 TIPS:",
+            "• Börja med en liten testgrupp (5-10 elever) för att testa importen",
+            "• Kopiera/klistra in data från befintliga Excel-filer",
+            "• Spara ofta!",
+            "",
+            "📞 HJÄLP:",
+            "Om något går fel, kontrollera att:",
+            "1. Alla obligatoriska fält är ifyllda",
+            "2. Namn är unika (samma person ska inte finnas två gånger)",
+            "3. Klassnamn matchar mellan arken",
+            "4. Tider är i rätt format (HH:MM)",
+            "",
+            "Lycka till! 🚀",
+        ]
+
+        for i, text in enumerate(instructions, start=2):
+            sheet[f'A{i}'] = text
+            if text.startswith(("📋", "⚠️", "💡", "📞")):
+                sheet[f'A{i}'].font = Font(bold=True, size=12)
+
+        sheet.column_dimensions['A'].width = 100
+
+    @staticmethod
+    def _create_students_sheet(sheet):
+        """Create students sheet with headers and example data."""
+        from openpyxl.styles import Font, PatternFill
+
+        # Headers
+        headers = [
+            "Förnamn *",
+            "Efternamn *",
+            "Årskurs (0-6) *",
+            "Klass *",
+            "Har vårdbehov (JA/NEJ)",
+            "Vårdbehov (kommaseparerat)",
+            "Kräver dubbelbemanning (JA/NEJ)",
+        ]
+
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+
+        for col, header in enumerate(headers, start=1):
+            cell = sheet.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+
+        # Example data
+        sheet.append([
+            "Anna",
+            "Andersson",
+            "3",
+            "3A",
+            "JA",
+            "Epilepsi, Allergi",
+            "NEJ",
+        ])
+
+        sheet.append([
+            "Bengt",
+            "Bengtsson",
+            "3",
+            "3A",
+            "NEJ",
+            "",
+            "NEJ",
+        ])
+
+        # Set column widths
+        sheet.column_dimensions['A'].width = 18
+        sheet.column_dimensions['B'].width = 15
+        sheet.column_dimensions['C'].width = 15
+        sheet.column_dimensions['D'].width = 15
+        sheet.column_dimensions['E'].width = 12
+        sheet.column_dimensions['F'].width = 25
+        sheet.column_dimensions['G'].width = 30
+        sheet.column_dimensions['H'].width = 30
+
+    @staticmethod
+    def _create_staff_sheet(sheet):
+        """Create staff sheet with headers and example data."""
+        from openpyxl.styles import Font, PatternFill
+
+        headers = [
+            "Förnamn *",
+            "Efternamn *",
+            "Roll *",
+            "Certifieringar (kommaseparerat)",
+            "Schematyp *",
+        ]
+
+        header_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+
+        for col, header in enumerate(headers, start=1):
+            cell = sheet.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+
+        # Example data
+        sheet.append([
+            "Karin",
+            "Karlsson",
+            "ELEVASSISTENT",
+            "Epilepsi, Diabetes",
+            "FAST",
+        ])
+
+        sheet.append([
+            "Lars",
+            "Larsson",
+            "PEDAGOG",
+            "",
+            "FAST",
+        ])
+
+        # Add comments for valid values
+        sheet['C2'].comment = openpyxl.comments.Comment(
+            "Giltiga roller:\n- ELEVASSISTENT\n- PEDAGOG\n- FRITIDSPEDAGOG",
+            "System"
+        )
+
+        sheet['E2'].comment = openpyxl.comments.Comment(
+            "Giltiga schematyper:\n- FAST\n- TVÅVECKORS",
+            "System"
+        )
+
+        # Set column widths
+        for col in ['A', 'B']:
+            sheet.column_dimensions[col].width = 18
+        sheet.column_dimensions['C'].width = 20
+        sheet.column_dimensions['D'].width = 35
+        sheet.column_dimensions['E'].width = 15
+
+    @staticmethod
+    def _create_classes_sheet(sheet):
+        """Create classes sheet with headers and example data."""
+        from openpyxl.styles import Font, PatternFill
+
+        headers = [
+            "Klassnamn *",
+            "Årskursgrupp *",
+            "Ansvarig lärare (namn)",
+            "Läsår *",
+        ]
+
+        header_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        header_font = Font(bold=True, color="000000")
+
+        for col, header in enumerate(headers, start=1):
+            cell = sheet.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+
+        # Example data
+        sheet.append(["F", "FÖRSKOLEKLASS", "", "2025/2026"])
+        sheet.append(["1A", "LÅGSTADIUM", "Lars Larsson", "2025/2026"])
+        sheet.append(["2A", "LÅGSTADIUM", "", "2025/2026"])
+        sheet.append(["3A", "MELLANSTADIUM", "", "2025/2026"])
+
+        # Add comment
+        sheet['B2'].comment = openpyxl.comments.Comment(
+            "Giltiga årskursgrupper:\n- FÖRSKOLEKLASS\n- LÅGSTADIUM (1-3)\n- MELLANSTADIUM (4-6)",
+            "System"
+        )
+
+        # Set column widths
+        sheet.column_dimensions['A'].width = 15
+        sheet.column_dimensions['B'].width = 20
+        sheet.column_dimensions['C'].width = 30
+        sheet.column_dimensions['D'].width = 15
+
+    @staticmethod
+    def _create_care_times_sheet(sheet):
+        """Create care times sheet with headers and example data."""
+        from openpyxl.styles import Font, PatternFill
+
+        headers = [
+            "Elev Namn (Förnamn Efternamn) *",
+            "Veckodag (0-4) *",
+            "Starttid (HH:MM) *",
+            "Sluttid (HH:MM) *",
+        ]
+
+        header_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+        header_font = Font(bold=True, color="000000")
+
+        for col, header in enumerate(headers, start=1):
+            cell = sheet.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+
+        # Example data
+        sheet.append(["Anna Andersson", "0", "07:00", "16:00"])
+        sheet.append(["Anna Andersson", "1", "07:00", "16:00"])
+        sheet.append(["Anna Andersson", "2", "07:00", "16:00"])
+        sheet.append(["Erik Eriksson", "0", "08:00", "17:00"])
+
+        # Add comment
+        sheet['B2'].comment = openpyxl.comments.Comment(
+            "Veckodagar:\n0 = Måndag\n1 = Tisdag\n2 = Onsdag\n3 = Torsdag\n4 = Fredag",
+            "System"
+        )
+
+        # Set column widths
+        for col in ['A', 'B', 'C', 'D']:
+            sheet.column_dimensions[col].width = 20
+
+    @staticmethod
+    def _create_work_hours_sheet(sheet):
+        """Create work hours sheet with headers and example data."""
+        from openpyxl.styles import Font, PatternFill
+
+        headers = [
+            "Personal Namn (Förnamn Efternamn) *",
+            "Veckodag (0-4) *",
+            "Starttid (HH:MM) *",
+            "Sluttid (HH:MM) *",
+            "Lunch start (HH:MM)",
+            "Lunch slut (HH:MM)",
+        ]
+
+        header_fill = PatternFill(start_color="C5E0B4", end_color="C5E0B4", fill_type="solid")
+        header_font = Font(bold=True, color="000000")
+
+        for col, header in enumerate(headers, start=1):
+            cell = sheet.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+
+        # Example data
+        sheet.append(["Karin Karlsson", "0", "07:00", "16:00", "12:00", "12:30"])
+        sheet.append(["Karin Karlsson", "1", "07:00", "16:00", "12:00", "12:30"])
+        sheet.append(["Lars Larsson", "0", "08:00", "17:00", "11:30", "12:00"])
+
+        # Add comment
+        sheet['B2'].comment = openpyxl.comments.Comment(
+            "Veckodagar:\n0 = Måndag\n1 = Tisdag\n2 = Onsdag\n3 = Torsdag\n4 = Fredag",
+            "System"
+        )
+
+        # Set column widths
+        for col in ['A', 'B', 'C', 'D', 'E', 'F']:
+            sheet.column_dimensions[col].width = 22

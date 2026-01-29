@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { staffApi } from '../api';
-import type { StaffCreate, StaffUpdate, AbsenceCreate } from '../types';
+import type { StaffCreate, StaffUpdate, AbsenceCreate, WorkHourCreate, WorkHourUpdate } from '../types';
 
 /**
  * Fetch all staff
@@ -108,6 +108,66 @@ export function useDeleteAbsence() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    },
+  });
+}
+
+// ============================================================================
+// WORK HOUR HOOKS
+// ============================================================================
+
+/**
+ * Fetch work hours for a staff member
+ */
+export function useWorkHours(staffId: string | null) {
+  return useQuery({
+    queryKey: ['work-hours', staffId],
+    queryFn: () => (staffId ? staffApi.getWorkHours(staffId) : []),
+    enabled: !!staffId,
+  });
+}
+
+/**
+ * Create work hour
+ */
+export function useCreateWorkHour() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ staffId, data }: { staffId: string; data: WorkHourCreate }) =>
+      staffApi.createWorkHour(staffId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['work-hours', variables.staffId] });
+    },
+  });
+}
+
+/**
+ * Update work hour
+ */
+export function useUpdateWorkHour() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data, staffId }: { id: string; data: WorkHourUpdate; staffId: string }) =>
+      staffApi.updateWorkHour(id, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['work-hours', variables.staffId] });
+    },
+  });
+}
+
+/**
+ * Delete work hour
+ */
+export function useDeleteWorkHour() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, staffId }: { id: string; staffId: string }) =>
+      staffApi.deleteWorkHour(id),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['work-hours', variables.staffId] });
     },
   });
 }

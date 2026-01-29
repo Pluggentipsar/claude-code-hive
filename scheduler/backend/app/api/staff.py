@@ -2,21 +2,26 @@
 FastAPI routes for staff management.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.database import get_db
-from app.models import Staff, Absence
+from app.models import Staff, Absence, Schedule, Student
+from app.models.staff import WorkHour
 from app.schemas import (
     StaffCreate,
     StaffUpdate,
     StaffResponse,
+    WorkHourCreate,
+    WorkHourUpdate,
+    WorkHourResponse,
     AbsenceCreate,
     AbsenceResponse,
 )
+from app.core import SchoolScheduler, SchedulingError
 
 router = APIRouter()
 
@@ -136,13 +141,49 @@ async def delete_staff(
 # ABSENCE MANAGEMENT
 # ============================================================================
 
+def _calculate_week_info(absence_date: datetime) -> tuple[int, int]:
+    """
+    Calculate week number and year from absence date.
+
+    Args:
+        absence_date: Date of the absence
+
+    Returns:
+        Tuple of (week_number, year)
+    """
+    # ISO week date - week 1 is the week with the first Thursday
+    iso_calendar = absence_date.isocalendar()
+    week_number = iso_calendar[1]
+    year = iso_calendar[0]
+
+    return week_number, year
+
+
 @router.post("/{staff_id}/absences", response_model=AbsenceResponse, status_code=status.HTTP_201_CREATED)
 async def create_absence(
     staff_id: UUID,
     absence_data: AbsenceCreate,
+    auto_regenerate: bool = Query(
+        True,
+        description="Automatically regenerate affected schedules when absence is created"
+    ),
     db: Session = Depends(get_db)
 ):
-    """Register an absence for a staff member."""
+    """
+    Register an absence for a staff member.
+
+    Optionally triggers automatic schedule regeneration for the affected week.
+    This ensures the schedule is updated to reflect the new absence.
+
+    Args:
+        staff_id: ID of the staff member
+        absence_data: Absence details (date, time, reason)
+        auto_regenerate: If True, regenerates schedules for affected weeks
+        db: Database session
+
+    Returns:
+        Created absence record
+    """
     # Verify staff exists
     staff = db.query(Staff).filter(Staff.id == staff_id).first()
 
@@ -164,6 +205,69 @@ async def create_absence(
     db.add(absence)
     db.commit()
     db.refresh(absence)
+
+    # Auto-regenerate affected schedules if requested
+    if auto_regenerate:
+        week_number, year = _calculate_week_info(absence_data.absence_date)
+
+        # Check if a schedule exists for this week
+        existing_schedule = db.query(Schedule).filter(
+            Schedule.week_number == week_number,
+            Schedule.year == year
+        ).first()
+
+        if existing_schedule:
+            try:
+                # Fetch all data needed for regeneration
+                students = db.query(Student).filter(Student.active.is_(True)).all()
+                all_staff = db.query(Staff).filter(Staff.active.is_(True)).all()
+
+                # Calculate week date range to get all absences
+                year_start = datetime(year, 1, 1)
+                days_to_monday = (7 - year_start.weekday()) % 7
+                first_monday = year_start + timedelta(days=days_to_monday)
+                week_start = first_monday + timedelta(weeks=week_number - 1)
+                week_end = week_start + timedelta(days=7)
+
+                # Get all absences for this week (including the one just created)
+                absences = db.query(Absence).filter(
+                    Absence.absence_date >= week_start,
+                    Absence.absence_date < week_end
+                ).all()
+
+                # Regenerate schedule
+                scheduler = SchoolScheduler(max_solve_time_seconds=60)
+                new_schedule = scheduler.create_schedule(
+                    students=students,
+                    staff=all_staff,
+                    week_number=week_number,
+                    year=year,
+                    absences=absences
+                )
+
+                # Delete old schedule and save new one
+                db.delete(existing_schedule)
+                db.flush()
+                db.add(new_schedule)
+                db.commit()
+
+                print(f"[OK] Schedule regenerated for week {week_number}/{year} due to new absence")
+
+            except SchedulingError as e:
+                # Log error but don't fail the absence creation
+                print(f"[WARNING] Could not regenerate schedule for week {week_number}/{year}: {str(e)}")
+                # Rollback only the schedule changes, keep the absence
+                db.rollback()
+                db.add(absence)
+                db.commit()
+                db.refresh(absence)
+            except Exception as e:
+                # Log error but don't fail the absence creation
+                print(f"[WARNING] Unexpected error regenerating schedule: {str(e)}")
+                db.rollback()
+                db.add(absence)
+                db.commit()
+                db.refresh(absence)
 
     return absence
 
@@ -208,3 +312,106 @@ async def delete_absence(
     db.commit()
 
     return {"message": "Absence deleted successfully"}
+
+
+# ============================================================================
+# WORK HOUR MANAGEMENT
+# ============================================================================
+
+@router.post("/{staff_id}/work-hours", response_model=WorkHourResponse, status_code=status.HTTP_201_CREATED)
+async def create_work_hour(
+    staff_id: UUID,
+    work_hour_data: WorkHourCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a work hour entry for a staff member."""
+    # Verify staff exists
+    staff = db.query(Staff).filter(Staff.id == staff_id).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Staff {staff_id} not found"
+        )
+
+    # Create work hour
+    work_hour = WorkHour(
+        staff_id=staff_id,
+        **work_hour_data.model_dump()
+    )
+
+    db.add(work_hour)
+    db.commit()
+    db.refresh(work_hour)
+
+    return work_hour
+
+
+@router.get("/{staff_id}/work-hours", response_model=List[WorkHourResponse])
+async def list_staff_work_hours(
+    staff_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """List all work hours for a staff member."""
+    # Verify staff exists
+    staff = db.query(Staff).filter(Staff.id == staff_id).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Staff {staff_id} not found"
+        )
+
+    work_hours = db.query(WorkHour).filter(
+        WorkHour.staff_id == staff_id
+    ).order_by(
+        WorkHour.week_number, WorkHour.weekday, WorkHour.start_time
+    ).all()
+
+    return work_hours
+
+
+@router.put("/work-hours/{work_hour_id}", response_model=WorkHourResponse)
+async def update_work_hour(
+    work_hour_id: UUID,
+    update_data: WorkHourUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update a work hour entry."""
+    work_hour = db.query(WorkHour).filter(WorkHour.id == work_hour_id).first()
+
+    if not work_hour:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Work hour {work_hour_id} not found"
+        )
+
+    # Update fields
+    update_dict = update_data.model_dump(exclude_unset=True)
+    for field, value in update_dict.items():
+        setattr(work_hour, field, value)
+
+    db.commit()
+    db.refresh(work_hour)
+
+    return work_hour
+
+
+@router.delete("/work-hours/{work_hour_id}")
+async def delete_work_hour(
+    work_hour_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Delete a work hour entry."""
+    work_hour = db.query(WorkHour).filter(WorkHour.id == work_hour_id).first()
+
+    if not work_hour:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Work hour {work_hour_id} not found"
+        )
+
+    db.delete(work_hour)
+    db.commit()
+
+    return {"message": "Work hour deleted successfully"}

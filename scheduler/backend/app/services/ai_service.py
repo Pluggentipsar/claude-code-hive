@@ -218,32 +218,40 @@ SVARA I DETTA JSON-FORMAT:
 
         Returns:
             Human-readable explanation
+
+        GDPR COMPLIANCE:
+        - NO personal names are sent to Claude API
+        - Only anonymous IDs and generic categories
         """
         weekday_names = ['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag']
         weekday = weekday_names[assignment.weekday]
 
+        # ANONYMIZE - Never send real names!
+        anon_staff = anonymization_service.anonymize_staff_member(staff, "S1")
+        anon_student = anonymization_service.anonymize_student(student, "E1")
+
         prompt = f"""Förklara varför denna schemaläggning gjordes på ett pedagogiskt sätt.
 
 TILLDELNING:
-Personal: {staff.full_name} ({staff.role.value})
-Elev: {student.full_name} (årskurs {student.grade})
+Personal: {anon_staff['id']} (roll: {anon_staff['role']})
+Elev: {anon_student['id']} (årskurs {anon_student['grade']})
 Tid: {weekday} {assignment.start_time}-{assignment.end_time}
 Typ: {assignment.assignment_type.value}
 
 KONTEXT:
 Elevens behov:
-- Vårdbehov: {student.care_requirements if student.has_care_needs else 'Inga'}
-- Preferenser: {student.preferred_staff if student.preferred_staff else 'Inga specifika'}
-- Dubbelbemanning: {'Ja' if student.requires_double_staffing else 'Nej'}
+- Vårdbehov (generiska kategorier): {anon_student['care_needs'] if anon_student['care_needs'] else 'Inga'}
+- Dubbelbemanning: {'Ja' if anon_student['requires_double_staffing'] else 'Nej'}
 
 Personalens kompetens:
-- Certifieringar: {staff.care_certifications if staff.care_certifications else 'Inga särskilda'}
+- Certifieringar: {anon_staff['certifications'] if anon_staff['certifications'] else 'Inga särskilda'}
 
 Ge en kort, tydlig förklaring (2-3 meningar) på svenska som är lätt att förstå för icke-teknisk personal.
-Fokusera på VARFÖR detta val gjordes."""
+Fokusera på VARFÖR detta val gjordes.
+VIKTIGT: Använd INTE ID:n (S1, E1) i förklaringen - använd "personalen" och "eleven"."""
 
         try:
-            # Call Azure Claude API
+            # Call Azure Claude API (now with anonymous data only!)
             response_text = self._call_azure_claude(
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=300,
@@ -402,7 +410,11 @@ Håll tonen professionell men varm. Målgrupp: lärare och assistenter."""
         staff: List[Staff],
         absences: List[Absence]
     ) -> str:
-        """Format available staff as readable text."""
+        """
+        Format available staff as readable text.
+
+        GDPR COMPLIANCE: NO names sent to AI - only anonymous IDs!
+        """
         absent_ids = {a.staff_id for a in absences}
         available = [s for s in staff if s.id not in absent_ids]
 
@@ -410,9 +422,10 @@ Håll tonen professionell men varm. Målgrupp: lärare och assistenter."""
             return "Ingen tillgänglig personal."
 
         lines = []
-        for s in available[:10]:  # Limit to first 10
-            certs = ', '.join(s.care_certifications) if s.care_certifications else 'Inga certifieringar'
-            lines.append(f"- {s.full_name} ({s.role.value}): {certs}")
+        for idx, s in enumerate(available[:10], start=1):  # Limit to first 10
+            anon_staff = anonymization_service.anonymize_staff_member(s, f"S{idx}")
+            certs = ', '.join(anon_staff['certifications']) if anon_staff['certifications'] else 'Inga certifieringar'
+            lines.append(f"- {anon_staff['id']} (roll: {anon_staff['role']}): {certs}")
 
         if len(available) > 10:
             lines.append(f"... och {len(available) - 10} till")
@@ -420,16 +433,26 @@ Håll tonen professionell men varm. Målgrupp: lärare och assistenter."""
         return "\n".join(lines)
 
     def _format_absences(self, absences: List[Absence]) -> str:
-        """Format absences as readable text."""
+        """
+        Format absences as readable text.
+
+        GDPR COMPLIANCE: NO names sent to AI - only anonymous IDs and roles!
+        """
         if not absences:
             return "Inga frånvarande."
 
         lines = []
-        for absence in absences:
-            staff_name = absence.staff.full_name if absence.staff else "Okänd"
+        for idx, absence in enumerate(absences, start=1):
+            if absence.staff:
+                anon_staff = anonymization_service.anonymize_staff_member(absence.staff, f"S_absent_{idx}")
+                staff_info = f"{anon_staff['id']} ({anon_staff['role']})"
+            else:
+                staff_info = "Okänd personal"
+
             date_str = absence.absence_date.strftime('%Y-%m-%d')
             reason = absence.reason.value
-            lines.append(f"- {staff_name}: {date_str} ({reason})")
+            time_info = f"{absence.start_time}-{absence.end_time}" if absence.start_time else "Heldag"
+            lines.append(f"- {staff_info}: {date_str}, {time_info} ({reason})")
 
         return "\n".join(lines)
 
@@ -510,7 +533,12 @@ Håll tonen professionell men varm. Målgrupp: lärare och assistenter."""
         student: Student,
         staff: Staff
     ) -> str:
-        """Provide basic fallback explanation when AI fails."""
+        """
+        Provide basic fallback explanation when AI fails.
+
+        NOTE: This is a fallback shown to USERS, so it CAN contain real names.
+        Users have permission to see this data - it's not sent to external APIs.
+        """
         explanation = f"{staff.full_name} tilldelades {student.full_name}"
 
         if student.has_care_needs and staff.care_certifications:

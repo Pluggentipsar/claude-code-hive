@@ -83,12 +83,24 @@ class AnonymizationService:
             anon_id = f"S{idx}"
             staff_mapping[anon_id] = str(staff_member.id)
 
+            # Anonymize work hours (NO names, only times)
+            work_hours = []
+            for wh in staff_member.work_hours:
+                work_hours.append({
+                    "weekday": wh.weekday,
+                    "week_number": wh.week_number,
+                    "start_time": wh.start_time,
+                    "end_time": wh.end_time,
+                    "lunch_start": wh.lunch_start,
+                    "lunch_end": wh.lunch_end,
+                })
+
             anonymized_staff.append({
                 "id": anon_id,
                 "role": staff_member.role.value,  # Role is OK to share
                 "certifications": staff_member.care_certifications or [],  # Generic categories
                 "schedule_type": staff_member.schedule_type.value,
-                # Work hours will be added separately (not implemented yet)
+                "work_hours": work_hours,  # Times only, no names
             })
 
         # Anonymize students
@@ -100,12 +112,23 @@ class AnonymizationService:
             # Generalize care requirements to categories (not specific diagnoses)
             generic_needs = self._generalize_care_needs(student.care_requirements or [])
 
+            # Anonymize care times (NO names, only times and validity)
+            care_times = []
+            for ct in student.care_times:
+                care_times.append({
+                    "weekday": ct.weekday,
+                    "start_time": ct.start_time,
+                    "end_time": ct.end_time,
+                    "valid_from": ct.valid_from.isoformat() if ct.valid_from else None,
+                    "valid_to": ct.valid_to.isoformat() if ct.valid_to else None,
+                })
+
             anonymized_students.append({
                 "id": anon_id,
                 "grade": student.grade,  # Grade level is OK
                 "care_needs": generic_needs,  # Generalized categories only
                 "requires_double_staffing": student.requires_double_staffing,
-                # Care times will be added separately (not implemented yet)
+                "care_times": care_times,  # Times only, no names
             })
 
         # Store mappings for this session
@@ -258,6 +281,33 @@ class AnonymizationService:
             return [self._translate_ids_recursive(item, staff_map, student_map) for item in data]
         else:
             return data
+
+    def anonymize_staff_member(self, staff: Staff, anon_id: str = None) -> Dict[str, Any]:
+        """
+        Anonymize a single staff member for display in AI prompts.
+
+        Returns anonymous representation WITHOUT personal names.
+        """
+        return {
+            "id": anon_id or f"S{id(staff) % 1000}",
+            "role": staff.role.value,
+            "certifications": staff.care_certifications or [],
+        }
+
+    def anonymize_student(self, student: Student, anon_id: str = None) -> Dict[str, Any]:
+        """
+        Anonymize a single student for display in AI prompts.
+
+        Returns anonymous representation WITHOUT personal names.
+        """
+        generic_needs = self._generalize_care_needs(student.care_requirements or [])
+
+        return {
+            "id": anon_id or f"E{id(student) % 1000}",
+            "grade": student.grade,
+            "care_needs": generic_needs,
+            "requires_double_staffing": student.requires_double_staffing,
+        }
 
     def cleanup_session(self, session_id: str):
         """

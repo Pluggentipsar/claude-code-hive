@@ -15,7 +15,6 @@ app = FastAPI(
     description="Hybrid scheduling system for Kålgårdens Anpassade Grundskola",
     docs_url="/docs",
     redoc_url="/redoc",
-    redirect_slashes=False,  # Allow both /staff and /staff/
 )
 
 # Configure CORS
@@ -46,11 +45,17 @@ async def health_check():
 
 
 # Import and include API routers
-from app.api import schedules, students, staff
+from app.api.schedules import router as schedules_router
+from app.api.students import router as students_router
+from app.api.staff import router as staff_router
+from app.api.classes import router as classes_router
+from app.api.import_export import router as import_export_router
 
-app.include_router(students.router, prefix=f"{settings.api_v1_prefix}/students", tags=["students"])
-app.include_router(staff.router, prefix=f"{settings.api_v1_prefix}/staff", tags=["staff"])
-app.include_router(schedules.router, prefix=f"{settings.api_v1_prefix}/schedules", tags=["schedules"])
+app.include_router(students_router, prefix=f"{settings.api_v1_prefix}/students", tags=["students"])
+app.include_router(staff_router, prefix=f"{settings.api_v1_prefix}/staff", tags=["staff"])
+app.include_router(classes_router, prefix=f"{settings.api_v1_prefix}/classes", tags=["classes"])
+app.include_router(schedules_router, prefix=f"{settings.api_v1_prefix}/schedules", tags=["schedules"])
+app.include_router(import_export_router, prefix=f"{settings.api_v1_prefix}/import-export", tags=["import-export"])
 
 
 if __name__ == "__main__":

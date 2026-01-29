@@ -9,6 +9,9 @@ import type {
   ScheduleCreate,
   AISuggestion,
   PredictedProblem,
+  TestAbsenceRequest,
+  AbsenceImpactResponse,
+  CoverageGapsResponse,
 } from '../types';
 
 export const schedulesApi = {
@@ -74,5 +77,26 @@ export const schedulesApi = {
       `/schedules/${id}/predict-problems`
     );
     return response.data.predictions;
+  },
+
+  /**
+   * Test impact of an absence without saving it
+   */
+  async testAbsenceImpact(data: TestAbsenceRequest): Promise<AbsenceImpactResponse> {
+    const response = await apiClient.post<AbsenceImpactResponse>(
+      '/schedules/test-absence',
+      data
+    );
+    return response.data;
+  },
+
+  /**
+   * Get coverage gaps for a schedule
+   */
+  async getCoverageGaps(id: string): Promise<CoverageGapsResponse> {
+    const response = await apiClient.get<CoverageGapsResponse>(
+      `/schedules/${id}/coverage-gaps`
+    );
+    return response.data;
   },
 };

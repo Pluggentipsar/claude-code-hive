@@ -5,8 +5,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useScheduleByWeek, useGenerateSchedule, useAISuggestions } from '../hooks/useSchedule';
-import { WeekView } from '../components/Schedule/WeekView';
-import { DayView } from '../components/Schedule/DayView';
+import { ScheduleViewTabs } from '../components/Schedule/ScheduleViewTabs';
 import { Button } from '../components/Common/Button';
 import { ErrorMessage } from '../components/Common/ErrorMessage';
 import { SuggestionPanel, ConflictIndicator } from '../components/AI';
@@ -16,11 +15,7 @@ export function SchedulePage() {
   const {
     currentWeek,
     currentYear,
-    selectedView,
-    selectedWeekday,
     setCurrentWeek,
-    setView,
-    setSelectedWeekday,
   } = useAppStore();
 
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -44,7 +39,7 @@ export function SchedulePage() {
       await generateMutation.mutateAsync({
         week_number: currentWeek,
         year: currentYear,
-        force_regenerate: false,
+        force_regenerate: !!schedule, // true if regenerating, false if creating new
       });
       setShowGenerateModal(false);
     } catch (err) {
@@ -91,30 +86,6 @@ export function SchedulePage() {
 
             {/* Action buttons */}
             <div className="flex items-center space-x-3">
-              {/* View toggle */}
-              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-                <button
-                  onClick={() => setView('week')}
-                  className={`px-4 py-2 text-sm font-medium ${
-                    selectedView === 'week'
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  📅 Veckovy
-                </button>
-                <button
-                  onClick={() => setView('day')}
-                  className={`px-4 py-2 text-sm font-medium border-l border-gray-300 ${
-                    selectedView === 'day'
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  📋 Dagvy
-                </button>
-              </div>
-
               {/* Generate button */}
               {!schedule && !isLoading && (
                 <Button onClick={() => setShowGenerateModal(true)}>
@@ -167,52 +138,14 @@ export function SchedulePage() {
           />
         )}
 
-        {/* Day selector for day view */}
-        {selectedView === 'day' && (
-          <div className="bg-white rounded-lg shadow p-4">
-            <div className="flex items-center space-x-2">
-              {['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag'].map((day, index) => (
-                <button
-                  key={day}
-                  onClick={() => setSelectedWeekday(index)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    selectedWeekday === index
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {day}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Main content area */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Schedule view */}
+          {/* Schedule view with tabs */}
           <div className={showAIPanel ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            {selectedView === 'week' ? (
-              <WeekView
-                schedule={schedule || null}
-                isLoading={isLoading}
-                onAssignmentClick={(assignment) => {
-                  console.log('Clicked assignment:', assignment);
-                  // TODO: Show assignment details modal
-                }}
-              />
-            ) : (
-              schedule && (
-                <DayView
-                  weekday={selectedWeekday}
-                  assignments={schedule.assignments}
-                  onAssignmentClick={(assignment) => {
-                    console.log('Clicked assignment:', assignment);
-                    // TODO: Show assignment details modal
-                  }}
-                />
-              )
-            )}
+            <ScheduleViewTabs
+              schedule={schedule || null}
+              isLoading={isLoading}
+            />
           </div>
 
           {/* AI Panel */}

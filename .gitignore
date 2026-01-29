@@ -1,1 +1,5 @@
 scheduler/backend/nul
+
+# Azure configuration files (contains secrets)
+scheduler/AZURE*.md
+.claude/settings.local.json

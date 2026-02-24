@@ -3,8 +3,8 @@
  */
 
 import { useState } from 'react';
-import { useWorkHours, useCreateWorkHour, useUpdateWorkHour, useDeleteWorkHour } from '../../hooks/useStaff';
-import type { WorkHour, WorkHourCreate } from '../../types';
+import { useWorkHours, useCreateWorkHour, useDeleteWorkHour } from '../../hooks/useStaff';
+import type { WorkHourCreate } from '../../types';
 import { Button } from '../Common/Button';
 
 interface WorkHoursTableProps {
@@ -16,11 +16,8 @@ const WEEK_LABELS = ['Båda veckor', 'Vecka 1', 'Vecka 2'];
 
 export function WorkHoursTable({ staffId }: WorkHoursTableProps) {
   const [isAdding, setIsAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
   const { data: workHours, isLoading } = useWorkHours(staffId);
   const createMutation = useCreateWorkHour();
-  const updateMutation = useUpdateWorkHour();
   const deleteMutation = useDeleteWorkHour();
 
   const [formData, setFormData] = useState<WorkHourCreate>({
@@ -46,26 +43,6 @@ export function WorkHoursTable({ staffId }: WorkHoursTableProps) {
       });
     } catch (err) {
       console.error('Failed to create work hour:', err);
-    }
-  };
-
-  const handleUpdate = async (workHour: WorkHour) => {
-    try {
-      await updateMutation.mutateAsync({
-        id: workHour.id,
-        staffId,
-        data: {
-          weekday: workHour.weekday,
-          week_number: workHour.week_number,
-          start_time: workHour.start_time,
-          end_time: workHour.end_time,
-          lunch_start: workHour.lunch_start || undefined,
-          lunch_end: workHour.lunch_end || undefined,
-        },
-      });
-      setEditingId(null);
-    } catch (err) {
-      console.error('Failed to update work hour:', err);
     }
   };
 

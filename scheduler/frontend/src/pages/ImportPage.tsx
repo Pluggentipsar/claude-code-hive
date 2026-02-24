@@ -6,20 +6,21 @@ import { useState } from 'react';
 import { Button } from '../components/Common/Button';
 import { ExcelUpload } from '../components/Import/ExcelUpload';
 import { Download, Upload, FileSpreadsheet } from 'lucide-react';
+import apiClient from '../api/client';
 
 export function ImportPage() {
   const [showUpload, setShowUpload] = useState(false);
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/v1/import-export/template');
-
-      if (!response.ok) {
-        throw new Error('Failed to download template');
-      }
+      const response = await apiClient.get('/import-export/template', {
+        responseType: 'blob',
+      });
 
       // Create blob and download
-      const blob = await response.blob();
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

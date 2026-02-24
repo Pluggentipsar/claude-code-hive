@@ -12,6 +12,8 @@ export type ScheduleType = 'two_week_rotation' | 'fixed';
 
 export type GradeGroup = 'grades_1_3' | 'grades_4_6';
 
+export type StaffGradeGroup = 'grades_1_3' | 'grades_4_6';
+
 export type SolverStatus = 'optimal' | 'feasible' | 'infeasible' | 'timeout' | 'error';
 
 export type AssignmentType = 'one_to_one' | 'class_coverage' | 'leisure' | 'double_staffing';
@@ -35,6 +37,7 @@ export interface Student {
   requires_double_staffing: boolean;
   notes: string | null;
   active: boolean;
+  care_times: CareTime[];
   created_at: string;
   updated_at: string;
 }
@@ -102,6 +105,7 @@ export interface Staff {
   first_name: string;
   last_name: string;
   role: StaffRole;
+  grade_group: StaffGradeGroup | null;
   care_certifications: string[];
   schedule_type: ScheduleType;
   employment_start: string;
@@ -114,6 +118,7 @@ export interface StaffCreate {
   first_name: string;
   last_name: string;
   role: StaffRole;
+  grade_group?: StaffGradeGroup | null;
   care_certifications?: string[];
   schedule_type?: ScheduleType;
 }
@@ -122,6 +127,7 @@ export interface StaffUpdate {
   first_name?: string;
   last_name?: string;
   role?: StaffRole;
+  grade_group?: StaffGradeGroup | null;
   care_certifications?: string[];
   schedule_type?: ScheduleType;
   active?: boolean;
@@ -138,11 +144,27 @@ export interface Absence {
 }
 
 export interface AbsenceCreate {
-  staff_id: string;
   absence_date: string;
   start_time?: string;
   end_time?: string;
   reason: AbsenceReason;
+}
+
+export interface BulkAbsenceCreate {
+  start_date: string;
+  end_date: string;
+  start_time?: string;
+  end_time?: string;
+  reason: AbsenceReason;
+  include_weekends: boolean;
+}
+
+export interface BulkAbsenceResponse {
+  created: Absence[];
+  count: number;
+  skipped_weekends: number;
+  skipped_existing: number;
+  regenerated_weeks: number[];
 }
 
 export interface WorkHour {
@@ -232,6 +254,7 @@ export interface ScheduleCreate {
   year: number;
   force_regenerate?: boolean;
   max_solve_time?: number;
+  slot_duration_minutes?: 15 | 30 | 60;
 }
 
 export interface Assignment {
@@ -338,6 +361,52 @@ export interface CoverageGapsResponse {
   understaffed_timeslots: TimeslotGap[];
   uncovered_students: StudentSummary[];
   double_staffing_violations: StudentSummary[];
+}
+
+// ============================================================================
+// RULE-BASED SUGGESTION TYPES
+// ============================================================================
+
+export interface RuleActionDetail {
+  type: 'reassign' | 'add_assignment' | 'swap' | 'remove';
+  assignment_id?: string;
+  new_staff_id?: string;
+  new_staff_name?: string;
+  student_id?: string;
+  student_name?: string;
+  weekday?: number;
+  start_time?: string;
+  end_time?: string;
+  assignment_type?: string;
+  swap_assignment_id?: string;
+  side_effects: string[];
+  description: string;
+}
+
+export interface RuleSuggestion {
+  id: string;
+  conflict_id: string;
+  suggestion_type: 'coverage_gap' | 'double_staffing' | 'workload_balance' | 'continuity';
+  priority: number;
+  root_cause: string;
+  actions: RuleActionDetail[];
+}
+
+export interface RuleSuggestionsResponse {
+  suggestions: RuleSuggestion[];
+  total: number;
+}
+
+export interface ApplyActionRequest {
+  action: RuleActionDetail;
+  suggestion_id: string;
+}
+
+export interface ApplyActionResponse {
+  success: boolean;
+  message: string;
+  modified_assignment_id?: string;
+  created_assignment_id?: string;
 }
 
 // ============================================================================

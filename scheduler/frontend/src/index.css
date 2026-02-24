@@ -11,3 +11,75 @@
     @apply bg-gray-50 text-gray-900 antialiased;
   }
 }
+
+/* Print styles — clean table output for posting on the wall */
+@media print {
+  /* Hide navigation, sidebar, filter bar, buttons, interactive elements */
+  nav,
+  .no-print,
+  button,
+  select,
+  input[type="time"],
+  input[type="number"],
+  input[type="text"] {
+    display: none !important;
+  }
+
+  /* Show time/text values as plain text via data attributes */
+  td input[type="time"],
+  td input[type="number"],
+  td input[type="text"] {
+    display: inline !important;
+    border: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+  }
+
+  /* Reset page layout */
+  body {
+    background: white !important;
+    font-size: 11pt;
+  }
+
+  .p-6 {
+    padding: 0 !important;
+  }
+
+  .max-w-7xl {
+    max-width: none !important;
+  }
+
+  /* Remove shadows and rounded corners */
+  .shadow,
+  .rounded-lg {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Print header info */
+  .print-header {
+    display: block !important;
+    text-align: center;
+    font-size: 14pt;
+    font-weight: bold;
+    margin-bottom: 12pt;
+  }
+
+  /* Compact table rows */
+  table {
+    font-size: 10pt;
+    width: 100%;
+  }
+
+  td, th {
+    padding: 2pt 4pt !important;
+  }
+
+  /* Page break between major sections */
+  .page-break-before {
+    page-break-before: always;
+  }
+}

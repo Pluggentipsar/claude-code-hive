@@ -9,15 +9,19 @@ from uuid import uuid4
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
 from app.database import Base, get_db
 from app.main import app
 from app.models import (
-    Student, Staff, SchoolClass, Schedule, StaffAssignment,
+    Student, Staff, SchoolClass,
     WorkHour, CareTime, Absence,
-    StaffRole, ScheduleType, GradeGroup, SolverStatus
+    StaffRole, ScheduleType, GradeGroup,
+    User, UserRole,
+    WeekSchedule, StudentDay, StaffShift,
 )
+from app.core.security import get_password_hash, create_access_token
 
 
 # Test database URL (in-memory SQLite for fast testing)
@@ -27,7 +31,11 @@ TEST_DATABASE_URL = "sqlite:///:memory:"
 @pytest.fixture(scope="function")
 def db_engine():
     """Create a test database engine."""
-    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        TEST_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)
@@ -57,6 +65,124 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+# ============================================================================
+# AUTH FIXTURES
+# ============================================================================
+
+@pytest.fixture
+def sample_admin_user(db_session: Session) -> User:
+    """Create a sample admin user."""
+    user = User(
+        id=uuid4(),
+        email="admin@test.com",
+        hashed_password=get_password_hash("admin12345"),
+        first_name="Admin",
+        last_name="User",
+        role=UserRole.ADMIN,
+        active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def sample_teacher_user(db_session: Session) -> User:
+    """Create a sample teacher user."""
+    user = User(
+        id=uuid4(),
+        email="teacher@test.com",
+        hashed_password=get_password_hash("teacher12345"),
+        first_name="Teacher",
+        last_name="User",
+        role=UserRole.TEACHER,
+        active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def sample_staff_user(db_session: Session) -> User:
+    """Create a sample staff user (lowest privilege)."""
+    user = User(
+        id=uuid4(),
+        email="staff@test.com",
+        hashed_password=get_password_hash("staff12345"),
+        first_name="Staff",
+        last_name="User",
+        role=UserRole.STAFF,
+        active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def admin_token(sample_admin_user: User) -> str:
+    """Create a JWT token for the admin user."""
+    return create_access_token(
+        user_id=str(sample_admin_user.id),
+        role=sample_admin_user.role.value,
+    )
+
+
+@pytest.fixture
+def teacher_token(sample_teacher_user: User) -> str:
+    """Create a JWT token for the teacher user."""
+    return create_access_token(
+        user_id=str(sample_teacher_user.id),
+        role=sample_teacher_user.role.value,
+    )
+
+
+@pytest.fixture
+def staff_token(sample_staff_user: User) -> str:
+    """Create a JWT token for the staff user."""
+    return create_access_token(
+        user_id=str(sample_staff_user.id),
+        role=sample_staff_user.role.value,
+    )
+
+
+@pytest.fixture
+def auth_headers(admin_token: str) -> dict:
+    """Return authorization headers for the admin user."""
+    return {"Authorization": f"Bearer {admin_token}"}
+
+
+@pytest.fixture
+def auth_client(client: TestClient, auth_headers: dict):
+    """Return a test client wrapper that auto-adds auth headers."""
+    class AuthenticatedClient:
+        def __init__(self, client, headers):
+            self._client = client
+            self._headers = headers
+
+        def get(self, url, **kwargs):
+            kwargs.setdefault("headers", {}).update(self._headers)
+            return self._client.get(url, **kwargs)
+
+        def post(self, url, **kwargs):
+            kwargs.setdefault("headers", {}).update(self._headers)
+            return self._client.post(url, **kwargs)
+
+        def put(self, url, **kwargs):
+            kwargs.setdefault("headers", {}).update(self._headers)
+            return self._client.put(url, **kwargs)
+
+        def delete(self, url, **kwargs):
+            kwargs.setdefault("headers", {}).update(self._headers)
+            return self._client.delete(url, **kwargs)
+
+    return AuthenticatedClient(client, auth_headers)
 
 
 # ============================================================================
@@ -226,24 +352,46 @@ def sample_student_no_care_needs(db_session: Session, sample_school_class: Schoo
 
 
 @pytest.fixture
-def sample_schedule(db_session: Session) -> Schedule:
-    """Create a sample schedule."""
-    schedule = Schedule(
+def sample_week_schedule(
+    db_session: Session,
+    sample_student_with_care_needs: Student,
+    sample_staff_assistant: Staff,
+) -> WeekSchedule:
+    """Create a sample week schedule with student days and staff shifts."""
+    ws = WeekSchedule(
         id=uuid4(),
-        week_number=12,
         year=2026,
-        solver_status=SolverStatus.OPTIMAL,
-        objective_value=1000.0,
-        solve_time_ms=5000,
-        hard_constraints_met=True,
-        soft_constraints_score=85.0,
-        is_published=False,
-        created_by="pytest"
+        week_number=12,
     )
-    db_session.add(schedule)
+    db_session.add(ws)
+    db_session.flush()
+
+    # Add a student day for Monday
+    sd = StudentDay(
+        id=uuid4(),
+        week_schedule_id=ws.id,
+        student_id=sample_student_with_care_needs.id,
+        weekday=0,
+        arrival_time="08:00",
+        departure_time="14:00",
+    )
+    db_session.add(sd)
+
+    # Add a staff shift for Monday
+    ss = StaffShift(
+        id=uuid4(),
+        week_schedule_id=ws.id,
+        staff_id=sample_staff_assistant.id,
+        weekday=0,
+        start_time="08:00",
+        end_time="16:00",
+        break_minutes=60,
+    )
+    db_session.add(ss)
+
     db_session.commit()
-    db_session.refresh(schedule)
-    return schedule
+    db_session.refresh(ws)
+    return ws
 
 
 @pytest.fixture

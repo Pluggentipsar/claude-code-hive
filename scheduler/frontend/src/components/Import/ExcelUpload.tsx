@@ -5,6 +5,7 @@
 import { useState, useCallback } from 'react';
 import { Button } from '../Common/Button';
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lucide-react';
+import apiClient, { getErrorMessage } from '../../api/client';
 
 interface ExcelUploadProps {
   onClose: () => void;
@@ -86,20 +87,14 @@ export function ExcelUpload({ onClose }: ExcelUploadProps) {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:8000/api/v1/import-export/excel', {
-        method: 'POST',
-        body: formData,
+      const response = await apiClient.post('/import-export/excel', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Uppladdning misslyckades');
-      }
-
-      const result: ParseResponse = await response.json();
+      const result: ParseResponse = response.data;
       setParseResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ett fel uppstod');
+      setError(getErrorMessage(err));
     } finally {
       setIsUploading(false);
     }
@@ -115,22 +110,16 @@ export function ExcelUpload({ onClose }: ExcelUploadProps) {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:8000/api/v1/import-export/excel/import', {
-        method: 'POST',
-        body: formData,
+      const response = await apiClient.post('/import-export/excel/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Import misslyckades');
-      }
-
-      const result = await response.json();
+      const result = response.data;
       alert(`✅ Import lyckades!\n\n${JSON.stringify(result.stats, null, 2)}`);
       onClose();
       window.location.reload(); // Reload to show new data
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ett fel uppstod');
+      setError(getErrorMessage(err));
     } finally {
       setIsUploading(false);
     }

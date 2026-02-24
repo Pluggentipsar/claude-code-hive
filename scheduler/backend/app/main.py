@@ -50,12 +50,23 @@ from app.api.students import router as students_router
 from app.api.staff import router as staff_router
 from app.api.classes import router as classes_router
 from app.api.import_export import router as import_export_router
+from app.api.auth import router as auth_router
+from app.api.week_schedules import router as week_schedules_router
 
+app.include_router(auth_router, prefix=f"{settings.api_v1_prefix}/auth", tags=["auth"])
 app.include_router(students_router, prefix=f"{settings.api_v1_prefix}/students", tags=["students"])
 app.include_router(staff_router, prefix=f"{settings.api_v1_prefix}/staff", tags=["staff"])
 app.include_router(classes_router, prefix=f"{settings.api_v1_prefix}/classes", tags=["classes"])
 app.include_router(schedules_router, prefix=f"{settings.api_v1_prefix}/schedules", tags=["schedules"])
 app.include_router(import_export_router, prefix=f"{settings.api_v1_prefix}/import-export", tags=["import-export"])
+app.include_router(week_schedules_router, prefix=f"{settings.api_v1_prefix}", tags=["week-schedules"])
+
+
+# Auto-create tables for SQLite (dev mode)
+if settings.database_url.startswith("sqlite"):
+    from app.database import init_db
+    from app import models  # noqa: ensure all models are registered
+    init_db()
 
 
 if __name__ == "__main__":

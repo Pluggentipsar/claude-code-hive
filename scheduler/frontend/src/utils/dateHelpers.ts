@@ -75,3 +75,23 @@ export function minutesToTime(minutes: number): string {
   const mins = minutes % 60;
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
+
+/**
+ * Filter assignments that overlap with a given time range.
+ * An assignment overlaps if its start is before the range end AND its end is after the range start.
+ * Returns all assignments if startTime='06:00' and endTime='18:00'.
+ */
+export function filterAssignmentsByTimeRange<T extends { start_time: string; end_time: string }>(
+  assignments: T[],
+  startTime: string,
+  endTime: string
+): T[] {
+  const rangeStart = timeToMinutes(startTime);
+  const rangeEnd = timeToMinutes(endTime);
+
+  return assignments.filter((a) => {
+    const aStart = timeToMinutes(a.start_time);
+    const aEnd = timeToMinutes(a.end_time);
+    return aStart < rangeEnd && aEnd > rangeStart;
+  });
+}

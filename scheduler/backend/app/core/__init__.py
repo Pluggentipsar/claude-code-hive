@@ -1,14 +1,20 @@
 """
-Core scheduling logic for Kålgårdens Schemaläggningssystem.
+Core module — security utilities.
 
-Contains the constraint programming engine and scheduler.
+The old scheduler and constraint engine have been removed.
+Scheduling is now handled manually via the week_schedules API.
 """
 
-from app.core.scheduler import SchoolScheduler, SchedulingError
-from app.core.constraints import ConstraintEngine
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    decode_access_token,
+)
 
 __all__ = [
-    "SchoolScheduler",
-    "SchedulingError",
-    "ConstraintEngine",
+    "verify_password",
+    "get_password_hash",
+    "create_access_token",
+    "decode_access_token",
 ]

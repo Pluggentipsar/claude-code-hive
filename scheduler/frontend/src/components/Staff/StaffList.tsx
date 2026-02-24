@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import type { Staff, AbsenceCreate } from '../../types';
+import type { Staff, AbsenceCreate, BulkAbsenceCreate } from '../../types';
 import { Button } from '../Common/Button';
 import { AbsenceForm } from './AbsenceForm';
 import { staffApi } from '../../api/staff';
@@ -75,7 +75,6 @@ export function StaffList({ staff, onStaffSelect, onCreateNew }: StaffListProps)
     try {
       await staffApi.createAbsence(selectedStaffForAbsence.id, data);
 
-      // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['absences'] });
@@ -84,6 +83,33 @@ export function StaffList({ staff, onStaffSelect, onCreateNew }: StaffListProps)
       setSelectedStaffForAbsence(null);
     } catch (error) {
       console.error('Failed to create absence:', error);
+      alert('Kunde inte anmäla frånvaro. Försök igen.');
+    } finally {
+      setIsSubmittingAbsence(false);
+    }
+  };
+
+  const handleBulkAbsenceSubmit = async (data: BulkAbsenceCreate) => {
+    if (!selectedStaffForAbsence) return;
+
+    setIsSubmittingAbsence(true);
+    try {
+      const result = await staffApi.createBulkAbsences(selectedStaffForAbsence.id, data);
+
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['absences'] });
+
+      setShowAbsenceForm(false);
+      setSelectedStaffForAbsence(null);
+
+      const parts = [`${result.count} frånvarodagar skapade.`];
+      if (result.skipped_weekends > 0) parts.push(`${result.skipped_weekends} helgdagar hoppades över.`);
+      if (result.skipped_existing > 0) parts.push(`${result.skipped_existing} befintliga frånvarodagar hoppades över.`);
+      if (result.regenerated_weeks.length > 0) parts.push(`Schema omgenererat för vecka ${result.regenerated_weeks.join(', ')}.`);
+      alert(parts.join('\n'));
+    } catch (error) {
+      console.error('Failed to create bulk absences:', error);
       alert('Kunde inte anmäla frånvaro. Försök igen.');
     } finally {
       setIsSubmittingAbsence(false);
@@ -198,6 +224,7 @@ export function StaffList({ staff, onStaffSelect, onCreateNew }: StaffListProps)
             setSelectedStaffForAbsence(null);
           }}
           onSubmit={handleAbsenceSubmit}
+          onSubmitBulk={handleBulkAbsenceSubmit}
           isSubmitting={isSubmittingAbsence}
         />
       )}

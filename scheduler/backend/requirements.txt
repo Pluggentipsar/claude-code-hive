@@ -16,17 +16,17 @@ pydantic-settings==2.7.1
 openpyxl==3.1.5
 pandas==3.0.0
 
-# Constraint Programming
-ortools>=9.11.0
-
-# AI Integration (via Azure)
-# Note: Using httpx for Azure OpenAI API calls instead of anthropic SDK
-# anthropic==0.43.1  # Not needed when using Azure
 
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.24.0
 httpx==0.28.1
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+email-validator>=2.0.0
 
 # Utilities
 python-dateutil==2.9.0.post0

@@ -2,12 +2,12 @@
 Pydantic schemas for staff endpoints.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional
 from datetime import datetime, date
 from uuid import UUID
 
-from app.models import StaffRole, ScheduleType, AbsenceReason
+from app.models import StaffRole, ScheduleType, AbsenceReason, StaffGradeGroup
 
 
 class StaffCreate(BaseModel):
@@ -17,8 +17,10 @@ class StaffCreate(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     role: StaffRole
+    grade_group: Optional[StaffGradeGroup] = None
     care_certifications: List[str] = []
     schedule_type: ScheduleType = ScheduleType.FIXED
+    default_shifts: Optional[dict] = None
 
 
 class StaffUpdate(BaseModel):
@@ -27,9 +29,11 @@ class StaffUpdate(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     role: Optional[StaffRole] = None
+    grade_group: Optional[StaffGradeGroup] = None
     care_certifications: Optional[List[str]] = None
     schedule_type: Optional[ScheduleType] = None
     active: Optional[bool] = None
+    default_shifts: Optional[dict] = None
 
 
 class StaffResponse(BaseModel):
@@ -40,8 +44,10 @@ class StaffResponse(BaseModel):
     first_name: str
     last_name: str
     role: StaffRole
+    grade_group: Optional[StaffGradeGroup] = None
     care_certifications: List[str]
     schedule_type: ScheduleType
+    default_shifts: dict = {}
     employment_start: datetime
     active: bool
     created_at: datetime
@@ -92,7 +98,6 @@ class WorkHourResponse(BaseModel):
 class AbsenceCreate(BaseModel):
     """Request schema for creating absence."""
 
-    staff_id: UUID
     absence_date: date
     start_time: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
     end_time: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
@@ -112,3 +117,33 @@ class AbsenceResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BulkAbsenceCreate(BaseModel):
+    """Request schema for creating absences over a date range."""
+
+    start_date: date
+    end_date: date
+    start_time: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
+    end_time: Optional[str] = Field(None, pattern=r'^\d{2}:\d{2}$')
+    reason: AbsenceReason = AbsenceReason.SICK
+    include_weekends: bool = False
+
+    @model_validator(mode='after')
+    def validate_dates(self):
+        if self.end_date < self.start_date:
+            raise ValueError('end_date must be >= start_date')
+        delta = (self.end_date - self.start_date).days
+        if delta > 31:
+            raise ValueError('Date range cannot exceed 31 days')
+        return self
+
+
+class BulkAbsenceResponse(BaseModel):
+    """Response schema for bulk absence creation."""
+
+    created: List[AbsenceResponse]
+    count: int
+    skipped_weekends: int
+    skipped_existing: int
+    regenerated_weeks: List[int]

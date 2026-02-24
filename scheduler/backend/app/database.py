@@ -34,12 +34,16 @@ class JSONType(TypeDecorator):
         # Let SQLAlchemy's JSON type handle deserialization
         return value
 
-# Create database engine
-engine = create_engine(
-    settings.database_url,
-    pool_pre_ping=True,  # Verify connections before using
-    echo=settings.debug,  # Log SQL queries in debug mode
-)
+# Create database engine with dialect-specific options
+_engine_kwargs: dict[str, Any] = {
+    "pool_pre_ping": True,
+    "echo": settings.debug,
+}
+
+if settings.database_url.startswith("sqlite"):
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(settings.database_url, **_engine_kwargs)
 
 # Create sessionmaker
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

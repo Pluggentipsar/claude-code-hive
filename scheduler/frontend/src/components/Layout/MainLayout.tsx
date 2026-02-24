@@ -4,6 +4,7 @@
 
 import { Link, useLocation } from 'react-router-dom';
 import { useAppStore } from '../../stores/appStore';
+import { useAuthStore } from '../../stores/authStore';
 
 interface NavItem {
   name: string;
@@ -19,9 +20,16 @@ const navItems: NavItem[] = [
   { name: 'Import/Export', path: '/import', icon: '📥' },
 ];
 
+const roleLabels: Record<string, string> = {
+  admin: 'Admin',
+  teacher: 'Pedagog',
+  staff: 'Personal',
+};
+
 export function MainLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { sidebarOpen, toggleSidebar } = useAppStore();
+  const { user, logout } = useAuthStore();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -42,9 +50,22 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">
-                {import.meta.env.VITE_APP_VERSION}
-              </span>
+              {user && (
+                <>
+                  <span className="text-sm text-gray-600">
+                    {user.first_name} {user.last_name}
+                    <span className="ml-1 text-xs text-gray-400">
+                      ({roleLabels[user.role] || user.role})
+                    </span>
+                  </span>
+                  <button
+                    onClick={logout}
+                    className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1 rounded hover:bg-gray-100"
+                  >
+                    Logga ut
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

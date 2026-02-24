@@ -19,6 +19,7 @@ class ScheduleCreate(BaseModel):
     year: int = Field(..., ge=2020, le=2100, description="Year")
     force_regenerate: bool = Field(default=False, description="Overwrite existing schedule")
     max_solve_time: Optional[int] = Field(default=60, description="Max solver time in seconds")
+    slot_duration_minutes: Optional[int] = Field(default=None, description="Timeslot duration (15, 30, or 60 minutes). Defaults to server setting.")
 
 
 class AssignmentResponse(BaseModel):

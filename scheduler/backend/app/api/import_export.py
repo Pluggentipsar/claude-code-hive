@@ -10,14 +10,18 @@ from typing import Dict, Any
 from io import BytesIO
 
 from app.database import get_db
-from app.services.excel_service import ExcelTemplateService, ExcelImportService
+from app.services.excel_service import ExcelTemplateService, ExcelImportService, import_to_database
 from app.models import Student, Staff, SchoolClass
+from app.models.user import User
+from app.api.deps import get_current_user, require_admin
 
 router = APIRouter()
 
 
 @router.get("/template")
-async def download_template():
+async def download_template(
+    current_user: User = Depends(get_current_user),
+):
     """
     Download a clean Excel template for bulk data import.
 
@@ -47,7 +51,8 @@ async def download_template():
 @router.post("/excel")
 async def upload_excel(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ) -> Dict[str, Any]:
     """
     Upload and parse an Excel file for bulk import.
@@ -67,22 +72,12 @@ async def upload_excel(
         )
 
     try:
-        # Read file content
+        # Read file content into memory
         content = await file.read()
 
-        # Save temporarily
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
-
-        # Parse Excel
+        # Parse Excel directly from memory
         service = ExcelImportService()
-        parsed_data = service.parse_schedule_excel(tmp_path)
-
-        # Clean up temp file
-        import os
-        os.unlink(tmp_path)
+        parsed_data = service.parse_schedule_excel(BytesIO(content))
 
         # Check for duplicates in database
         conflicts = _check_for_conflicts(parsed_data, db)
@@ -109,7 +104,8 @@ async def upload_excel(
 @router.post("/excel/import")
 async def import_excel_data(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ) -> Dict[str, Any]:
     """
     Import data from Excel file into database.
@@ -130,21 +126,13 @@ async def import_excel_data(
         )
 
     try:
-        # Read and save temporarily
+        # Read file content into memory
         content = await file.read()
 
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
-
-        # Parse and import
+        # Parse Excel, then import to database
         service = ExcelImportService()
-        result = service.import_to_database(tmp_path, db)
-
-        # Clean up
-        import os
-        os.unlink(tmp_path)
+        parsed_data = service.parse_schedule_excel(BytesIO(content))
+        result = import_to_database(parsed_data, db)
 
         return {
             "status": "success",

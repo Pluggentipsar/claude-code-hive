@@ -59,6 +59,7 @@ class StudentCreate(BaseModel):
     preferred_staff: List[str] = []
     requires_double_staffing: bool = False
     notes: Optional[str] = None
+    default_times: Optional[dict] = None
 
 
 class StudentUpdate(BaseModel):
@@ -74,6 +75,7 @@ class StudentUpdate(BaseModel):
     requires_double_staffing: Optional[bool] = None
     notes: Optional[str] = None
     active: Optional[bool] = None
+    default_times: Optional[dict] = None
 
 
 class StudentResponse(BaseModel):
@@ -91,6 +93,8 @@ class StudentResponse(BaseModel):
     requires_double_staffing: bool
     notes: Optional[str]
     active: bool
+    default_times: dict = {}
+    care_times: List[CareTimeResponse] = []
     created_at: datetime
 
     class Config:

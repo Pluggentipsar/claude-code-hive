@@ -3,17 +3,19 @@ FastAPI routes for student management.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 from uuid import UUID
 
 from app.database import get_db
 from app.models import Student
 from app.models.student import CareTime
+from app.models.user import User
 from app.schemas import (
     StudentCreate, StudentUpdate, StudentResponse,
     CareTimeCreate, CareTimeUpdate, CareTimeResponse
 )
+from app.api.deps import get_current_user, require_teacher_or_admin
 
 router = APIRouter()
 
@@ -21,7 +23,8 @@ router = APIRouter()
 @router.post("/", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
 async def create_student(
     student_data: StudentCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Create a new student."""
     # Check if student with this personal number already exists
@@ -46,10 +49,11 @@ async def list_students(
     skip: int = 0,
     limit: int = 100,
     active_only: bool = True,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List all students."""
-    query = db.query(Student)
+    query = db.query(Student).options(joinedload(Student.care_times))
 
     if active_only:
         query = query.filter(Student.active == True)
@@ -62,10 +66,11 @@ async def list_students(
 @router.get("/{student_id}", response_model=StudentResponse)
 async def get_student(
     student_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get a student by ID."""
-    student = db.query(Student).filter(Student.id == student_id).first()
+    student = db.query(Student).options(joinedload(Student.care_times)).filter(Student.id == student_id).first()
 
     if not student:
         raise HTTPException(
@@ -80,7 +85,8 @@ async def get_student(
 async def update_student(
     student_id: UUID,
     student_data: StudentUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Update a student."""
     student = db.query(Student).filter(Student.id == student_id).first()
@@ -105,7 +111,8 @@ async def update_student(
 @router.delete("/{student_id}")
 async def delete_student(
     student_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Soft delete a student (set active=False)."""
     student = db.query(Student).filter(Student.id == student_id).first()
@@ -130,7 +137,8 @@ async def delete_student(
 async def create_care_time(
     student_id: UUID,
     care_time_data: CareTimeCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Create a care time for a student."""
     # Verify student exists
@@ -158,7 +166,8 @@ async def create_care_time(
 @router.get("/{student_id}/care-times", response_model=List[CareTimeResponse])
 async def list_student_care_times(
     student_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List all care times for a student."""
     # Verify student exists
@@ -183,7 +192,8 @@ async def list_student_care_times(
 async def update_care_time(
     care_time_id: UUID,
     update_data: CareTimeUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Update a care time."""
     care_time = db.query(CareTime).filter(CareTime.id == care_time_id).first()
@@ -208,7 +218,8 @@ async def update_care_time(
 @router.delete("/care-times/{care_time_id}")
 async def delete_care_time(
     care_time_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Delete a care time."""
     care_time = db.query(CareTime).filter(CareTime.id == care_time_id).first()

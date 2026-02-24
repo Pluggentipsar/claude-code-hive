@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.database import get_db
 from app.models import Staff, Absence, Schedule, Student
 from app.models.staff import WorkHour
+from app.models.user import User
 from app.schemas import (
     StaffCreate,
     StaffUpdate,
@@ -20,8 +21,11 @@ from app.schemas import (
     WorkHourResponse,
     AbsenceCreate,
     AbsenceResponse,
+    BulkAbsenceCreate,
+    BulkAbsenceResponse,
 )
-from app.core import SchoolScheduler, SchedulingError
+from datetime import date as date_type
+from app.api.deps import get_current_user, require_admin
 
 router = APIRouter()
 
@@ -33,7 +37,8 @@ router = APIRouter()
 @router.post("/", response_model=StaffResponse, status_code=status.HTTP_201_CREATED)
 async def create_staff(
     staff_data: StaffCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """Create a new staff member."""
     # Check if staff with this personal number already exists
@@ -61,7 +66,8 @@ async def list_staff(
     skip: int = 0,
     limit: int = 100,
     active_only: bool = True,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List all staff members."""
     query = db.query(Staff)
@@ -77,7 +83,8 @@ async def list_staff(
 @router.get("/{staff_id}", response_model=StaffResponse)
 async def get_staff(
     staff_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get a staff member by ID."""
     staff = db.query(Staff).filter(Staff.id == staff_id).first()
@@ -95,7 +102,8 @@ async def get_staff(
 async def update_staff(
     staff_id: UUID,
     staff_data: StaffUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """Update a staff member."""
     staff = db.query(Staff).filter(Staff.id == staff_id).first()
@@ -120,7 +128,8 @@ async def update_staff(
 @router.delete("/{staff_id}")
 async def delete_staff(
     staff_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """Soft delete a staff member (set active=False)."""
     staff = db.query(Staff).filter(Staff.id == staff_id).first()
@@ -159,6 +168,14 @@ def _calculate_week_info(absence_date: datetime) -> tuple[int, int]:
     return week_number, year
 
 
+def _regenerate_week_schedule(db: Session, absence_date) -> bool:
+    """
+    No-op — scheduling is now manual via the week_schedules API.
+    Kept as stub since absence creation code calls this.
+    """
+    return False
+
+
 @router.post("/{staff_id}/absences", response_model=AbsenceResponse, status_code=status.HTTP_201_CREATED)
 async def create_absence(
     staff_id: UUID,
@@ -167,7 +184,8 @@ async def create_absence(
         True,
         description="Automatically regenerate affected schedules when absence is created"
     ),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Register an absence for a staff member.
@@ -196,7 +214,7 @@ async def create_absence(
     # Create absence
     absence = Absence(
         staff_id=staff_id,
-        absence_date=datetime.combine(absence_data.absence_date, datetime.min.time()),
+        absence_date=datetime.combine(absence_data.absence_date, datetime.min.time(), tzinfo=timezone.utc),
         start_time=absence_data.start_time,
         end_time=absence_data.end_time,
         reason=absence_data.reason,
@@ -208,74 +226,106 @@ async def create_absence(
 
     # Auto-regenerate affected schedules if requested
     if auto_regenerate:
-        week_number, year = _calculate_week_info(absence_data.absence_date)
-
-        # Check if a schedule exists for this week
-        existing_schedule = db.query(Schedule).filter(
-            Schedule.week_number == week_number,
-            Schedule.year == year
-        ).first()
-
-        if existing_schedule:
-            try:
-                # Fetch all data needed for regeneration
-                students = db.query(Student).filter(Student.active.is_(True)).all()
-                all_staff = db.query(Staff).filter(Staff.active.is_(True)).all()
-
-                # Calculate week date range to get all absences
-                year_start = datetime(year, 1, 1)
-                days_to_monday = (7 - year_start.weekday()) % 7
-                first_monday = year_start + timedelta(days=days_to_monday)
-                week_start = first_monday + timedelta(weeks=week_number - 1)
-                week_end = week_start + timedelta(days=7)
-
-                # Get all absences for this week (including the one just created)
-                absences = db.query(Absence).filter(
-                    Absence.absence_date >= week_start,
-                    Absence.absence_date < week_end
-                ).all()
-
-                # Regenerate schedule
-                scheduler = SchoolScheduler(max_solve_time_seconds=60)
-                new_schedule = scheduler.create_schedule(
-                    students=students,
-                    staff=all_staff,
-                    week_number=week_number,
-                    year=year,
-                    absences=absences
-                )
-
-                # Delete old schedule and save new one
-                db.delete(existing_schedule)
-                db.flush()
-                db.add(new_schedule)
-                db.commit()
-
-                print(f"[OK] Schedule regenerated for week {week_number}/{year} due to new absence")
-
-            except SchedulingError as e:
-                # Log error but don't fail the absence creation
-                print(f"[WARNING] Could not regenerate schedule for week {week_number}/{year}: {str(e)}")
-                # Rollback only the schedule changes, keep the absence
-                db.rollback()
-                db.add(absence)
-                db.commit()
-                db.refresh(absence)
-            except Exception as e:
-                # Log error but don't fail the absence creation
-                print(f"[WARNING] Unexpected error regenerating schedule: {str(e)}")
-                db.rollback()
-                db.add(absence)
-                db.commit()
-                db.refresh(absence)
+        _regenerate_week_schedule(db, absence_data.absence_date)
 
     return absence
+
+
+@router.post("/{staff_id}/absences/bulk", response_model=BulkAbsenceResponse, status_code=status.HTTP_201_CREATED)
+async def create_bulk_absences(
+    staff_id: UUID,
+    data: BulkAbsenceCreate,
+    auto_regenerate: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Create absences for a date range (one per weekday by default).
+    Skips weekends unless include_weekends is True.
+    Skips dates that already have an absence for this staff member.
+    Regenerates affected schedules once per week.
+    """
+    staff = db.query(Staff).filter(Staff.id == staff_id).first()
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Staff {staff_id} not found"
+        )
+
+    # Collect existing absence dates for this staff member in the range
+    existing_absences = db.query(Absence.absence_date).filter(
+        Absence.staff_id == staff_id,
+        Absence.absence_date >= datetime.combine(data.start_date, datetime.min.time(), tzinfo=timezone.utc),
+        Absence.absence_date <= datetime.combine(data.end_date, datetime.min.time(), tzinfo=timezone.utc),
+    ).all()
+    existing_dates = {a.absence_date.date() if hasattr(a.absence_date, 'date') else a.absence_date for a in existing_absences}
+
+    created = []
+    skipped_weekends = 0
+    skipped_existing = 0
+    affected_weeks = set()
+
+    current = data.start_date
+    one_day = timedelta(days=1)
+
+    while current <= data.end_date:
+        weekday = current.weekday()  # 0=Mon, 6=Sun
+
+        # Skip weekends if not included
+        if weekday >= 5 and not data.include_weekends:
+            skipped_weekends += 1
+            current += one_day
+            continue
+
+        # Skip if absence already exists
+        if current in existing_dates:
+            skipped_existing += 1
+            current += one_day
+            continue
+
+        absence = Absence(
+            staff_id=staff_id,
+            absence_date=datetime.combine(current, datetime.min.time(), tzinfo=timezone.utc),
+            start_time=data.start_time,
+            end_time=data.end_time,
+            reason=data.reason,
+        )
+        db.add(absence)
+        created.append(absence)
+
+        week_number, _ = _calculate_week_info(current)
+        affected_weeks.add((current, week_number))
+
+        current += one_day
+
+    db.commit()
+    for absence in created:
+        db.refresh(absence)
+
+    # Regenerate once per affected week
+    regenerated_weeks = []
+    if auto_regenerate:
+        seen_weeks = set()
+        for absence_date, week_num in affected_weeks:
+            if week_num not in seen_weeks:
+                seen_weeks.add(week_num)
+                if _regenerate_week_schedule(db, absence_date):
+                    regenerated_weeks.append(week_num)
+
+    return BulkAbsenceResponse(
+        created=created,
+        count=len(created),
+        skipped_weekends=skipped_weekends,
+        skipped_existing=skipped_existing,
+        regenerated_weeks=sorted(regenerated_weeks),
+    )
 
 
 @router.get("/{staff_id}/absences", response_model=List[AbsenceResponse])
 async def list_staff_absences(
     staff_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List all absences for a staff member."""
     # Verify staff exists
@@ -297,7 +347,8 @@ async def list_staff_absences(
 @router.delete("/absences/{absence_id}")
 async def delete_absence(
     absence_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """Delete an absence record."""
     absence = db.query(Absence).filter(Absence.id == absence_id).first()
@@ -322,7 +373,8 @@ async def delete_absence(
 async def create_work_hour(
     staff_id: UUID,
     work_hour_data: WorkHourCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """Create a work hour entry for a staff member."""
     # Verify staff exists
@@ -350,7 +402,8 @@ async def create_work_hour(
 @router.get("/{staff_id}/work-hours", response_model=List[WorkHourResponse])
 async def list_staff_work_hours(
     staff_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List all work hours for a staff member."""
     # Verify staff exists
@@ -375,7 +428,8 @@ async def list_staff_work_hours(
 async def update_work_hour(
     work_hour_id: UUID,
     update_data: WorkHourUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """Update a work hour entry."""
     work_hour = db.query(WorkHour).filter(WorkHour.id == work_hour_id).first()
@@ -400,7 +454,8 @@ async def update_work_hour(
 @router.delete("/work-hours/{work_hour_id}")
 async def delete_work_hour(
     work_hour_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """Delete a work hour entry."""
     work_hour = db.query(WorkHour).filter(WorkHour.id == work_hour_id).first()

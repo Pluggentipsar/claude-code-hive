@@ -12,6 +12,13 @@ import enum
 from app.database import Base, JSONType
 
 
+class StaffGradeGroup(str, enum.Enum):
+    """Which grade group a staff member primarily works with."""
+
+    GRADES_1_3 = "grades_1_3"
+    GRADES_4_6 = "grades_4_6"
+
+
 class StaffRole(str, enum.Enum):
     """Staff role types."""
 
@@ -54,6 +61,12 @@ class Staff(Base):
 
     # Schedule configuration
     schedule_type = Column(SQLEnum(ScheduleType), nullable=False, default=ScheduleType.FIXED)
+
+    # Grade group — which stage the staff primarily works with (nullable = works both)
+    grade_group = Column(SQLEnum(StaffGradeGroup), nullable=True, index=True)
+
+    # Default shifts per weekday (JSON): {"0": {"start": "07:00", "end": "16:00", "break": 30}, ...}
+    default_shifts = Column(JSONType, default=dict, nullable=False)
 
     # Employment
     employment_start = Column(DateTime(timezone=True), nullable=False)

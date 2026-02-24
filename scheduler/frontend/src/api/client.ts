@@ -6,7 +6,7 @@ import axios from 'axios';
 import type { AxiosInstance, AxiosError } from 'axios';
 
 // Get API URL from environment variable or default to localhost
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const API_VERSION = '/api/v1';
 
 // Create axios instance
@@ -45,8 +45,11 @@ apiClient.interceptors.response.use(
 
       switch (status) {
         case 401:
-          // Unauthorized - redirect to login (future)
-          console.error('Unauthorized access');
+          // Unauthorized - clear token and reload to trigger login
+          localStorage.removeItem('auth_token');
+          if (window.location.pathname !== '/') {
+            window.location.href = '/';
+          }
           break;
         case 404:
           console.error('Resource not found');

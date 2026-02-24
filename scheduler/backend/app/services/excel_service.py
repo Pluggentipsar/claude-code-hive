@@ -38,12 +38,14 @@ class ExcelImportService:
         self.staff_data: Dict[str, Any] = {}
         self.classes_data: Dict[str, Any] = {}
 
-    def parse_schedule_excel(self, filepath: str) -> Dict[str, Any]:
+    def parse_schedule_excel(self, filepath_or_buffer) -> Dict[str, Any]:
         """
         Parse the Excel schedule file and extract all data.
+        Auto-detects whether the file uses the template format or the
+        original weekday-sheet format.
 
         Args:
-            filepath: Path to Excel file
+            filepath_or_buffer: Path to Excel file or file-like object (BytesIO)
 
         Returns:
             Dictionary with parsed students, staff, classes, etc.
@@ -52,28 +54,206 @@ class ExcelImportService:
             ExcelParseError: If parsing fails
         """
         try:
-            # Load all sheets
-            excel_file = pd.ExcelFile(filepath, engine='openpyxl')
-            sheets = {sheet_name: excel_file.parse(sheet_name) for sheet_name in excel_file.sheet_names}
+            excel_file = pd.ExcelFile(filepath_or_buffer, engine='openpyxl')
+            sheet_names = excel_file.sheet_names
 
-            # Parse each day's sheet
-            weekdays = ['måndag', 'tisdag', 'onsdag', 'torsdag', 'fredag']
+            # Detect format: template sheets have emoji prefixes or known names
+            template_markers = ['Elever', 'Personal', 'Klasser', 'Omsorgstider', 'Arbetstider']
+            is_template = any(
+                any(marker in sn for marker in template_markers)
+                for sn in sheet_names
+            )
 
-            for sheet_name, df in sheets.items():
-                # Determine weekday from sheet name
-                weekday = self._extract_weekday_from_sheet_name(sheet_name)
-                if weekday is not None:
-                    self._parse_day_sheet(df, weekday)
+            if is_template:
+                return self._parse_template_format(excel_file)
+            else:
+                return self._parse_weekday_format(excel_file)
 
-            # Build complete data structure
-            return {
-                'students': self._build_students_list(),
-                'staff': self._build_staff_list(),
-                'classes': self._build_classes_list(),
-            }
-
+        except ExcelParseError:
+            raise
         except Exception as e:
             raise ExcelParseError(f"Failed to parse Excel file: {str(e)}")
+
+    def _parse_template_format(self, excel_file: pd.ExcelFile) -> Dict[str, Any]:
+        """Parse the structured template format with named sheets."""
+        sheets = {}
+        for sn in excel_file.sheet_names:
+            sheets[sn] = excel_file.parse(sn)
+
+        # Find sheets by partial name match
+        def find_sheet(keyword: str) -> Optional[pd.DataFrame]:
+            for sn, df in sheets.items():
+                if keyword in sn:
+                    return df
+            return None
+
+        # --- Parse Classes ---
+        classes = []
+        df_classes = find_sheet('Klasser')
+        if df_classes is not None and len(df_classes) > 0:
+            for _, row in df_classes.iterrows():
+                name = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else None
+                grade_group_raw = str(row.iloc[1]).strip().upper() if pd.notna(row.iloc[1]) else ""
+                teacher = str(row.iloc[2]).strip() if len(row) > 2 and pd.notna(row.iloc[2]) else ""
+                academic_year = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else "2025/2026"
+
+                if not name:
+                    continue
+
+                # Map Swedish grade group names to enum
+                if 'MELLAN' in grade_group_raw:
+                    grade_group = GradeGroup.GRADES_4_6
+                else:
+                    grade_group = GradeGroup.GRADES_1_3
+
+                classes.append({
+                    'name': name,
+                    'grade_group': grade_group,
+                    'teacher': teacher,
+                    'academic_year': academic_year,
+                })
+
+        # --- Parse Students ---
+        students = []
+        df_students = find_sheet('Elever')
+        if df_students is not None and len(df_students) > 0:
+            for idx, row in df_students.iterrows():
+                first_name = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else None
+                last_name = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else None
+                if not first_name or not last_name:
+                    continue
+
+                grade_val = row.iloc[2]
+                try:
+                    grade = int(float(grade_val))
+                except (ValueError, TypeError):
+                    grade = 1
+
+                class_name = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else ""
+
+                has_care = str(row.iloc[4]).strip().upper() == "JA" if len(row) > 4 and pd.notna(row.iloc[4]) else False
+                care_reqs_raw = str(row.iloc[5]).strip() if len(row) > 5 and pd.notna(row.iloc[5]) else ""
+                care_requirements = [c.strip() for c in care_reqs_raw.split(",") if c.strip()] if care_reqs_raw else []
+                double_staff = str(row.iloc[6]).strip().upper() == "JA" if len(row) > 6 and pd.notna(row.iloc[6]) else False
+
+                # Determine grade group from class or grade
+                grade_group = GradeGroup.GRADES_1_3 if grade <= 3 else GradeGroup.GRADES_4_6
+
+                personal_number = f"20{10 + grade:02d}{idx + 1:04d}-0000"
+
+                students.append({
+                    'personal_number': personal_number,
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'grade': grade,
+                    'grade_group': grade_group,
+                    'class_name': class_name,
+                    'has_care_needs': has_care,
+                    'care_requirements': care_requirements,
+                    'preferred_staff': [],
+                    'requires_double_staffing': double_staff,
+                    'care_times': {},
+                })
+
+        # --- Parse Staff ---
+        staff_list = []
+        df_staff = find_sheet('Personal')
+        if df_staff is not None and len(df_staff) > 0:
+            role_map = {
+                'ELEVASSISTENT': StaffRole.ASSISTANT,
+                'PEDAGOG': StaffRole.TEACHER,
+                'FRITIDSPEDAGOG': StaffRole.LEISURE_EDUCATOR,
+            }
+            schedule_map = {
+                'FAST': ScheduleType.FIXED,
+                'TVÅVECKORS': ScheduleType.TWO_WEEK_ROTATION,
+            }
+
+            for idx, row in df_staff.iterrows():
+                first_name = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else None
+                last_name = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else None
+                if not first_name or not last_name:
+                    continue
+
+                role_raw = str(row.iloc[2]).strip().upper() if pd.notna(row.iloc[2]) else "ELEVASSISTENT"
+                role = role_map.get(role_raw, StaffRole.ASSISTANT)
+
+                certs_raw = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
+                certs = [c.strip() for c in certs_raw.split(",") if c.strip()] if certs_raw else []
+
+                sched_raw = str(row.iloc[4]).strip().upper() if len(row) > 4 and pd.notna(row.iloc[4]) else "FAST"
+                schedule_type = schedule_map.get(sched_raw, ScheduleType.FIXED)
+
+                personal_number = f"19{70 + idx % 30:02d}{idx + 1:04d}-0000"
+
+                staff_list.append({
+                    'personal_number': personal_number,
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'role': role,
+                    'care_certifications': certs,
+                    'schedule_type': schedule_type,
+                    'work_hours': {},
+                })
+
+        # --- Parse Care Times and merge into students ---
+        df_care = find_sheet('Omsorgstider')
+        if df_care is not None and len(df_care) > 0:
+            student_by_name = {f"{s['first_name']} {s['last_name']}": s for s in students}
+            for _, row in df_care.iterrows():
+                name = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else None
+                if not name or name not in student_by_name:
+                    continue
+                try:
+                    weekday = int(float(row.iloc[1]))
+                except (ValueError, TypeError):
+                    continue
+                start = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else None
+                end = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else None
+                if start and end:
+                    student_by_name[name]['care_times'][weekday] = {
+                        'start': start, 'end': end,
+                    }
+
+        # --- Parse Work Hours and merge into staff ---
+        df_work = find_sheet('Arbetstider')
+        if df_work is not None and len(df_work) > 0:
+            staff_by_name = {f"{s['first_name']} {s['last_name']}": s for s in staff_list}
+            for _, row in df_work.iterrows():
+                name = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else None
+                if not name or name not in staff_by_name:
+                    continue
+                try:
+                    weekday = int(float(row.iloc[1]))
+                except (ValueError, TypeError):
+                    continue
+                start = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else None
+                end = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else None
+                if start and end:
+                    staff_by_name[name]['work_hours'][weekday] = {
+                        'start': start, 'end': end,
+                    }
+
+        return {
+            'students': students,
+            'staff': staff_list,
+            'classes': classes,
+        }
+
+    def _parse_weekday_format(self, excel_file: pd.ExcelFile) -> Dict[str, Any]:
+        """Parse the original weekday-sheet format (Måndag, Tisdag, etc.)."""
+        sheets = {sn: excel_file.parse(sn) for sn in excel_file.sheet_names}
+
+        for sheet_name, df in sheets.items():
+            weekday = self._extract_weekday_from_sheet_name(sheet_name)
+            if weekday is not None:
+                self._parse_day_sheet(df, weekday)
+
+        return {
+            'students': self._build_students_list(),
+            'staff': self._build_staff_list(),
+            'classes': self._build_classes_list(),
+        }
 
     def _extract_weekday_from_sheet_name(self, sheet_name: str) -> Optional[int]:
         """
@@ -559,16 +739,24 @@ def import_to_database(parsed_data: Dict[str, Any], db_session) -> Dict[str, Any
     # Create classes first (needed for student FK)
     class_map = {}
     for class_data in parsed_data['classes']:
-        school_class = SchoolClass(
-            id=uuid.uuid4(),
-            name=class_data['name'],
-            grade_group=class_data['grade_group'],
-            academic_year="2025/2026",
-            active=True,
-        )
-        db_session.add(school_class)
-        class_map[class_data['name']] = school_class
-        stats['classes_created'] += 1
+        # Check if class already exists
+        existing = db_session.query(SchoolClass).filter_by(
+            name=class_data['name']
+        ).first()
+
+        if existing:
+            class_map[class_data['name']] = existing
+        else:
+            school_class = SchoolClass(
+                id=uuid.uuid4(),
+                name=class_data['name'],
+                grade_group=class_data['grade_group'],
+                academic_year=class_data.get('academic_year', '2025/2026'),
+                active=True,
+            )
+            db_session.add(school_class)
+            class_map[class_data['name']] = school_class
+            stats['classes_created'] += 1
 
     db_session.flush()  # Get IDs for classes
 
@@ -590,7 +778,7 @@ def import_to_database(parsed_data: Dict[str, Any], db_session) -> Dict[str, Any
                 last_name=staff_data['last_name'],
                 role=staff_data['role'],
                 care_certifications=staff_data.get('care_certifications', []),
-                schedule_type=ScheduleType.FIXED,
+                schedule_type=staff_data.get('schedule_type', ScheduleType.FIXED),
                 employment_start=datetime.now(),
                 active=True,
             )
@@ -617,12 +805,17 @@ def import_to_database(parsed_data: Dict[str, Any], db_session) -> Dict[str, Any
     # Create students
     student_map = {}
     for student_data in parsed_data['students']:
-        # Determine class assignment (simplified - assign based on grade_group)
-        grade_group = student_data['grade_group']
-        class_suffix = 'A'  # Default to first class in group
-        class_name = f"Klass {'1-3' if grade_group == GradeGroup.GRADES_1_3 else '4-6'}{class_suffix}"
+        # Look up class by name from the student data
+        class_name = student_data.get('class_name', '')
+        class_id = class_map[class_name].id if class_name in class_map else None
 
-        class_id = class_map.get(class_name).id if class_name in class_map else None
+        # Fallback: assign based on grade group
+        if class_id is None:
+            grade_group = student_data.get('grade_group')
+            for cn, sc in class_map.items():
+                if sc.grade_group == grade_group:
+                    class_id = sc.id
+                    break
 
         # Find or create student
         existing_student = db_session.query(Student).filter_by(
@@ -641,7 +834,7 @@ def import_to_database(parsed_data: Dict[str, Any], db_session) -> Dict[str, Any
                 grade=student_data['grade'],
                 has_care_needs=student_data.get('has_care_needs', False),
                 care_requirements=student_data.get('care_requirements', []),
-                preferred_staff=[],  # Will populate below
+                preferred_staff=[],
                 requires_double_staffing=student_data.get('requires_double_staffing', False),
                 active=True,
             )
@@ -652,7 +845,6 @@ def import_to_database(parsed_data: Dict[str, Any], db_session) -> Dict[str, Any
 
         # Create care times
         for weekday, care_time in student_data.get('care_times', {}).items():
-            # Set validity period (current week)
             today = datetime.now().date()
             week_start = today - timedelta(days=today.weekday())
 
@@ -663,7 +855,7 @@ def import_to_database(parsed_data: Dict[str, Any], db_session) -> Dict[str, Any
                 start_time=care_time['start'],
                 end_time=care_time['end'],
                 valid_from=datetime.combine(week_start, datetime.min.time()),
-                valid_to=None,  # Indefinite
+                valid_to=None,
             )
             db_session.add(care_time_obj)
             stats['care_times_created'] += 1

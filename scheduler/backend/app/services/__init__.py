@@ -10,12 +10,13 @@ from app.services.excel_service import (
     import_to_database,
     ExcelParseError,
 )
-from app.services.ai_service import AIAdvisorService
+from app.services.schedule_validator import validate_day, validate_week
 
 __all__ = [
     "ExcelImportService",
     "ExcelExportService",
     "import_to_database",
     "ExcelParseError",
-    "AIAdvisorService",
+    "validate_day",
+    "validate_week",
 ]

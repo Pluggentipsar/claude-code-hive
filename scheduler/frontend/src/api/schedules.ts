@@ -12,6 +12,9 @@ import type {
   TestAbsenceRequest,
   AbsenceImpactResponse,
   CoverageGapsResponse,
+  RuleSuggestionsResponse,
+  ApplyActionRequest,
+  ApplyActionResponse,
 } from '../types';
 
 export const schedulesApi = {
@@ -19,7 +22,9 @@ export const schedulesApi = {
    * Generate new schedule
    */
   async generate(data: ScheduleCreate): Promise<ScheduleDetail> {
-    const response = await apiClient.post<ScheduleDetail>('/schedules/generate', data);
+    const response = await apiClient.post<ScheduleDetail>('/schedules/generate', data, {
+      timeout: 180000, // 3 minutes — solver may need two passes (strict + relaxed)
+    });
     return response.data;
   },
 
@@ -96,6 +101,27 @@ export const schedulesApi = {
   async getCoverageGaps(id: string): Promise<CoverageGapsResponse> {
     const response = await apiClient.get<CoverageGapsResponse>(
       `/schedules/${id}/coverage-gaps`
+    );
+    return response.data;
+  },
+
+  /**
+   * Get rule-based suggestions for a schedule
+   */
+  async getRuleSuggestions(id: string): Promise<RuleSuggestionsResponse> {
+    const response = await apiClient.get<RuleSuggestionsResponse>(
+      `/schedules/${id}/rule-suggestions`
+    );
+    return response.data;
+  },
+
+  /**
+   * Apply an action from a rule-based suggestion
+   */
+  async applyAction(scheduleId: string, request: ApplyActionRequest): Promise<ApplyActionResponse> {
+    const response = await apiClient.post<ApplyActionResponse>(
+      `/schedules/${scheduleId}/apply-action`,
+      request
     );
     return response.data;
   },

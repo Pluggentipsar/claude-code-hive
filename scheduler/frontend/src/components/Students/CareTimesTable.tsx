@@ -3,8 +3,8 @@
  */
 
 import { useState } from 'react';
-import { useCareTimes, useCreateCareTime, useUpdateCareTime, useDeleteCareTime } from '../../hooks/useStudents';
-import type { CareTime, CareTimeCreate } from '../../types';
+import { useCareTimes, useCreateCareTime, useDeleteCareTime } from '../../hooks/useStudents';
+import type { CareTimeCreate } from '../../types';
 import { Button } from '../Common/Button';
 
 interface CareTimesTableProps {
@@ -15,11 +15,8 @@ const WEEKDAYS = ['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag',
 
 export function CareTimesTable({ studentId }: CareTimesTableProps) {
   const [isAdding, setIsAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
   const { data: careTimes, isLoading } = useCareTimes(studentId);
   const createMutation = useCreateCareTime();
-  const updateMutation = useUpdateCareTime();
   const deleteMutation = useDeleteCareTime();
 
   const [formData, setFormData] = useState<CareTimeCreate>({
@@ -41,25 +38,6 @@ export function CareTimesTable({ studentId }: CareTimesTableProps) {
       });
     } catch (err) {
       console.error('Failed to create care time:', err);
-    }
-  };
-
-  const handleUpdate = async (careTime: CareTime) => {
-    try {
-      await updateMutation.mutateAsync({
-        id: careTime.id,
-        studentId,
-        data: {
-          weekday: careTime.weekday,
-          start_time: careTime.start_time,
-          end_time: careTime.end_time,
-          valid_from: careTime.valid_from,
-          valid_to: careTime.valid_to || undefined,
-        },
-      });
-      setEditingId(null);
-    } catch (err) {
-      console.error('Failed to update care time:', err);
     }
   };
 

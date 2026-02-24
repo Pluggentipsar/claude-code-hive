@@ -44,6 +44,9 @@ class Student(Base):
     )  # [staff_id1, staff_id2, ...]
     requires_double_staffing = Column(Boolean, default=False, nullable=False)
 
+    # Default times per weekday (JSON): {"0": {"arrival": "07:30", "departure": "16:30"}, ...}
+    default_times = Column(JSONType, default=dict, nullable=False)
+
     # Additional notes
     notes = Column(Text, nullable=True)
 

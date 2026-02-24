@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { schedulesApi } from '../api';
-import type { ScheduleCreate } from '../types';
+import type { ScheduleCreate, ApplyActionRequest } from '../types';
 
 /**
  * Fetch schedule by week
@@ -69,5 +69,34 @@ export function useAISuggestions(scheduleId: string | null) {
     queryKey: ['ai-suggestions', scheduleId],
     queryFn: () => (scheduleId ? schedulesApi.getAISuggestions(scheduleId) : null),
     enabled: !!scheduleId,
+  });
+}
+
+/**
+ * Get rule-based suggestions
+ */
+export function useRuleSuggestions(scheduleId: string | null) {
+  return useQuery({
+    queryKey: ['rule-suggestions', scheduleId],
+    queryFn: () => (scheduleId ? schedulesApi.getRuleSuggestions(scheduleId) : null),
+    enabled: !!scheduleId,
+  });
+}
+
+/**
+ * Apply a rule-based action
+ */
+export function useApplyAction(scheduleId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: ApplyActionRequest) => {
+      if (!scheduleId) throw new Error('No schedule ID');
+      return schedulesApi.applyAction(scheduleId, request);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['rule-suggestions', scheduleId] });
+    },
   });
 }

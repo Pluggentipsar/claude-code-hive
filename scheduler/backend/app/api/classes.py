@@ -10,11 +10,13 @@ from typing import List
 from app.database import get_db
 from app.models.school_class import SchoolClass
 from app.models.staff import Staff
+from app.models.user import User
 from app.schemas.school_class import (
     SchoolClassCreate,
     SchoolClassUpdate,
     SchoolClassResponse,
 )
+from app.api.deps import get_current_user, require_admin
 
 router = APIRouter()
 
@@ -23,6 +25,7 @@ router = APIRouter()
 async def create_class(
     class_data: SchoolClassCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Create a new school class.
@@ -63,6 +66,7 @@ async def list_classes(
     active_only: bool = Query(True, description="Filter to active classes only"),
     academic_year: str | None = Query(None, description="Filter by academic year"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     List all school classes with optional filters.
@@ -97,6 +101,7 @@ async def list_classes(
 async def get_class(
     class_id: UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Get a single school class by ID.
@@ -127,6 +132,7 @@ async def update_class(
     class_id: UUID,
     update_data: SchoolClassUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Update a school class.
@@ -172,6 +178,7 @@ async def update_class(
 async def delete_class(
     class_id: UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Soft delete a school class (set active=False).

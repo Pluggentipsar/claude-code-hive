@@ -20,6 +20,7 @@ export function StaffForm({ staff, onSubmit, onCancel, isLoading }: StaffFormPro
     first_name: staff?.first_name || '',
     last_name: staff?.last_name || '',
     role: staff?.role || 'elevassistent' as const,
+    grade_group: (staff?.grade_group || '') as string,
     care_certifications: staff?.care_certifications?.join(', ') || '',
     schedule_type: staff?.schedule_type || 'fixed' as const,
   });
@@ -35,6 +36,7 @@ export function StaffForm({ staff, onSubmit, onCancel, isLoading }: StaffFormPro
 
     const submitData = {
       ...formData,
+      grade_group: formData.grade_group || null,
       care_certifications: certifications,
     };
 
@@ -129,10 +131,28 @@ export function StaffForm({ staff, onSubmit, onCancel, isLoading }: StaffFormPro
               onChange={(e) => setFormData({ ...formData, schedule_type: e.target.value as any })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
             >
-              <option value="fixed">📅 Fast schema (varje vecka)</option>
-              <option value="two_week_rotation">🔄 Tvåveckorsschema (rullande)</option>
+              <option value="fixed">Fast schema (varje vecka)</option>
+              <option value="two_week_rotation">Tv\u00e5veckorsschema (rullande)</option>
             </select>
           </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Stadium
+          </label>
+          <select
+            value={formData.grade_group}
+            onChange={(e) => setFormData({ ...formData, grade_group: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">B\u00e5da stadier</option>
+            <option value="grades_1_3">L\u00e5gstadium (1-3)</option>
+            <option value="grades_4_6">Mellanstadium (4-6)</option>
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            Anv\u00e4nds f\u00f6r att rekommendera personal vid FM/EM-tilldelning.
+          </p>
         </div>
       </div>
 

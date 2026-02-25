@@ -6,8 +6,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Printer } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { useStaff } from '../hooks/useStaff';
+import { useStudents } from '../hooks/useStudents';
 import {
   useWeekSchedule,
   useCreateWeek,
@@ -21,6 +23,7 @@ import {
   useDeleteDayAssignment,
 } from '../hooks/useWeekSchedule';
 import { WeekHeader } from '../components/Schedule/WeekHeader';
+import { DayTabs } from '../components/Schedule/DayTabs';
 import { DayGrid } from '../components/Schedule/DayGrid';
 import { StaffShiftTable } from '../components/Schedule/StaffShiftTable';
 import { WarningBar } from '../components/Schedule/WarningBar';
@@ -32,35 +35,46 @@ import { useUndo } from '../hooks/useUndo';
 import { FilterBar, type QuickFilter } from '../components/Schedule/FilterBar';
 import { BulkAssignBar } from '../components/Schedule/BulkAssignBar';
 import { DayAssignmentModal } from '../components/Schedule/DayAssignmentModal';
+import { ConfirmDialog } from '../components/Common/ConfirmDialog';
+import { EmptyState } from '../components/Common/EmptyState';
+import { StaffAbsenceModal } from '../components/Schedule/StaffAbsenceModal';
 import { getDateForWeekday } from '../components/Schedule/StaffAbsencePopover';
 import { ErrorMessage } from '../components/Common/ErrorMessage';
 import { getErrorMessage } from '../api';
 import type { StudentDay, DayAssignment, DayAssignmentCreate, DayAssignmentUpdate, AbsentType } from '../types/weekSchedule';
+import type { Student } from '../types';
+import { Calendar } from 'lucide-react';
 
 const DAY_NAMES = ['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag'];
 
 export function SchedulePage() {
   const { currentWeek, currentYear, setCurrentWeek, selectedWeekday, setSelectedWeekday } = useAppStore();
 
-  // Fetch week schedule — returns null when no schedule exists (404)
   const { data: weekSchedule, isLoading: weekLoading, error: weekError } = useWeekSchedule(currentYear, currentWeek);
-
-  // weekSchedule is null when no schedule exists, undefined while loading
   const hasSchedule = weekSchedule != null;
-
-  // Fetch day data for the selected day
   const { data: dayData, isLoading: dayLoading } = useDayData(
     hasSchedule ? weekSchedule.id : null,
     selectedWeekday,
   );
-
-  // Staff list for pickers
   const { data: staffList = [] } = useStaff();
-
-  // Week summary (all 5 days)
+  const { data: students = [] } = useStudents();
   const weekSummary = useWeekSummary(hasSchedule ? weekSchedule.id : null);
 
-  // Undo stack — destructure to get stable refs for callbacks
+  const studentMap = useMemo(() => {
+    const map = new Map<string, Student>();
+    for (const s of students) map.set(s.id, s);
+    return map;
+  }, [students]);
+
+  const staffShiftMap = useMemo(() => {
+    const map = new Map<string, { start: string; end: string }>();
+    if (dayData) {
+      for (const shift of dayData.staff_shifts) {
+        map.set(shift.staff_id, { start: shift.start_time, end: shift.end_time });
+      }
+    }
+    return map;
+  }, [dayData]);
   const undoStack = useUndo();
   const { push: undoPush, clear: undoClear } = undoStack;
 
@@ -78,6 +92,20 @@ export function SchedulePage() {
   const [dayAssignmentModal, setDayAssignmentModal] = useState<{
     weekday: number;
     existing?: DayAssignment;
+  } | null>(null);
+
+  // Confirm dialog state (replaces window.confirm)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'primary';
+  } | null>(null);
+
+  // Staff absence modal state
+  const [absenceModal, setAbsenceModal] = useState<{
+    staffId: string;
+    staffName: string;
   } | null>(null);
 
   // Navigation
@@ -109,7 +137,6 @@ export function SchedulePage() {
           data: { target_year: currentYear, target_week: currentWeek },
         });
       } else {
-        // No previous week — just create new
         await createWeekMutation.mutateAsync({
           year: currentYear,
           week_number: currentWeek,
@@ -126,13 +153,10 @@ export function SchedulePage() {
   // Inline editing callbacks (with undo support)
   const handleUpdateStaffAssignment = useCallback(
     (sdId: string, field: 'fm_staff_id' | 'em_staff_id', value: string | null) => {
-      // Find previous value for undo
       const sd = dayData?.student_days.find(s => s.id === sdId);
       const prevValue = sd ? sd[field] : null;
       const staffName = field === 'fm_staff_id' ? 'FM' : 'EM';
-
       updateStudentDayMutation.mutate({ sdId, data: { [field]: value } });
-
       undoPush({
         label: `${staffName}-tilldelning ändrad för ${sd?.student_name || 'elev'}`,
         revert: () => updateStudentDayMutation.mutate({ sdId, data: { [field]: prevValue } }),
@@ -145,9 +169,7 @@ export function SchedulePage() {
     (sdId: string, field: 'arrival_time' | 'departure_time', value: string) => {
       const sd = dayData?.student_days.find(s => s.id === sdId);
       const prevValue = sd ? (sd[field] || '') : '';
-
       updateStudentDayMutation.mutate({ sdId, data: { [field]: value || undefined } });
-
       undoPush({
         label: `Tid ändrad för ${sd?.student_name || 'elev'}`,
         revert: () => updateStudentDayMutation.mutate({ sdId, data: { [field]: prevValue || undefined } }),
@@ -166,9 +188,7 @@ export function SchedulePage() {
         if ('break_minutes' in data) prevData.break_minutes = shift.break_minutes;
         if ('notes' in data) prevData.notes = shift.notes || undefined;
       }
-
       updateStaffShiftMutation.mutate({ shiftId, data });
-
       undoPush({
         label: `Pass ändrat för ${shift?.staff_name || 'personal'}`,
         revert: () => updateStaffShiftMutation.mutate({ shiftId, data: prevData }),
@@ -177,17 +197,16 @@ export function SchedulePage() {
     [updateStaffShiftMutation, dayData, undoPush]
   );
 
-  // Set student absence type
   const handleSetAbsentType = useCallback(
     (sdId: string, absentType: AbsentType) => {
       const sd = dayData?.student_days.find(s => s.id === sdId);
       const prevType = sd?.absent_type || 'none';
       updateStudentDayMutation.mutate({ sdId, data: { absent_type: absentType } });
       const labels: Record<AbsentType, string> = {
-        none: 'n\u00e4rvarande',
-        full_day: 'fr\u00e5nvarande heldag',
-        am: 'fr\u00e5nvarande FM',
-        pm: 'fr\u00e5nvarande EM',
+        none: 'närvarande',
+        full_day: 'frånvarande heldag',
+        am: 'frånvarande FM',
+        pm: 'frånvarande EM',
       };
       undoPush({
         label: `${sd?.student_name || 'Elev'} \u2192 ${labels[absentType]}`,
@@ -197,15 +216,21 @@ export function SchedulePage() {
     [updateStudentDayMutation, dayData, undoPush]
   );
 
-  // Publish/draft toggle
+  // Publish/draft toggle — uses ConfirmDialog instead of window.confirm
   const handleToggleStatus = useCallback(() => {
     if (!weekSchedule) return;
     const newStatus = weekSchedule.status === 'published' ? 'draft' : 'published';
-    const confirmMsg = newStatus === 'published'
-      ? 'Vill du publicera detta schema? Det blir synligt f\u00f6r alla.'
-      : 'Vill du avpublicera schemat och \u00e5terg\u00e5 till utkast?';
-    if (!window.confirm(confirmMsg)) return;
-    updateWeekMutation.mutate({ weekId: weekSchedule.id, data: { status: newStatus } });
+    setConfirmDialog({
+      title: newStatus === 'published' ? 'Publicera schema' : 'Avpublicera schema',
+      message: newStatus === 'published'
+        ? 'Vill du publicera detta schema? Det blir synligt för alla.'
+        : 'Vill du avpublicera schemat och återgå till utkast?',
+      variant: newStatus === 'published' ? 'primary' : 'danger',
+      onConfirm: () => {
+        updateWeekMutation.mutate({ weekId: weekSchedule.id, data: { status: newStatus } });
+        setConfirmDialog(null);
+      },
+    });
   }, [weekSchedule, updateWeekMutation]);
 
   // Day assignment CRUD
@@ -227,8 +252,15 @@ export function SchedulePage() {
 
   const handleDeleteDayAssignment = useCallback(
     (daId: string) => {
-      if (!window.confirm('Ta bort denna tilldelning?')) return;
-      deleteDayAssignmentMutation.mutate(daId);
+      setConfirmDialog({
+        title: 'Ta bort tilldelning',
+        message: 'Är du säker på att du vill ta bort denna tilldelning?',
+        variant: 'danger',
+        onConfirm: () => {
+          deleteDayAssignmentMutation.mutate(daId);
+          setConfirmDialog(null);
+        },
+      });
     },
     [deleteDayAssignmentMutation]
   );
@@ -240,7 +272,6 @@ export function SchedulePage() {
   const [selectedClass, setSelectedClass] = useState('');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
 
-  // Build class list dynamically from student data
   const classList = useMemo(() => {
     if (!dayData) return [];
     const map = new Map<string, { id: string; name: string; grade: number }>();
@@ -252,39 +283,50 @@ export function SchedulePage() {
     return Array.from(map.values()).sort((a, b) => a.grade - b.grade);
   }, [dayData]);
 
-  // Warning student IDs set — needed for quickFilter
   const warningStudentIds = useMemo(
     () => new Set(dayData?.warnings.filter(w => w.student_id).map(w => w.student_id) ?? []),
     [dayData?.warnings]
   );
 
+  const absentStaffIds = useMemo(
+    () => new Set(
+      dayData?.warnings
+        .filter(w => w.type === 'absence' && w.staff_id)
+        .map(w => w.staff_id!) ?? []
+    ),
+    [dayData?.warnings]
+  );
+
+  // Warning days for DayTabs
+  const warningDays = useMemo(() => {
+    const set = new Set<number>();
+    if (weekSummary.days) {
+      weekSummary.days.forEach((d, i) => {
+        if (d.warnings > 0 || d.unassignedFm + d.unassignedEm > 0) set.add(i);
+      });
+    }
+    return set;
+  }, [weekSummary.days]);
+
   const hasActiveFilters = searchTerm !== '' || selectedClass !== '' || quickFilter !== 'all';
 
-  // Helper: does this student need FM/EM care?
   const needsFm = (sd: StudentDay) => sd.arrival_time != null && sd.arrival_time < '08:30';
   const needsEm = (sd: StudentDay) => sd.departure_time != null && sd.departure_time > '13:30';
 
-  // Filtered student days (all three filters combined with AND)
   const filteredStudentDays = useMemo(() => {
     if (!dayData) return [];
     let result = dayData.student_days;
-
-    // Text search
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(sd => (sd.student_name || '').toLowerCase().includes(term));
     }
-
-    // Class filter
     if (selectedClass) {
       result = result.filter(sd => sd.class_id === selectedClass);
     }
-
-    // Quick filter
     if (quickFilter === 'missing_staff') {
       result = result.filter(sd => {
-        const fmNeeded = needsFm(sd) && !sd.fm_staff_id;
-        const emNeeded = needsEm(sd) && !sd.em_staff_id;
+        const fmNeeded = needsFm(sd) && (!sd.fm_staff_id || absentStaffIds.has(sd.fm_staff_id));
+        const emNeeded = needsEm(sd) && (!sd.em_staff_id || absentStaffIds.has(sd.em_staff_id));
         return fmNeeded || emNeeded;
       });
     } else if (quickFilter === 'special_needs') {
@@ -292,11 +334,9 @@ export function SchedulePage() {
     } else if (quickFilter === 'warnings') {
       result = result.filter(sd => warningStudentIds.has(sd.student_id));
     }
-
     return result;
-  }, [dayData, searchTerm, selectedClass, quickFilter, warningStudentIds]);
+  }, [dayData, searchTerm, selectedClass, quickFilter, warningStudentIds, absentStaffIds]);
 
-  // Filtered staff shifts (only text search)
   const filteredStaffShifts = useMemo(() => {
     if (!dayData) return [];
     if (!searchTerm) return dayData.staff_shifts;
@@ -310,7 +350,7 @@ export function SchedulePage() {
     setQuickFilter('all');
   };
 
-  // ── Bulk selection state (must come after filteredStudentDays) ──
+  // ── Bulk selection state ──
   const [selectedStudentDayIds, setSelectedStudentDayIds] = useState<Set<string>>(new Set());
 
   const handleToggleSelect = useCallback((sdId: string) => {
@@ -377,21 +417,11 @@ export function SchedulePage() {
 
         {/* Day tabs */}
         {hasSchedule && (
-          <div className="flex space-x-1 bg-white rounded-lg shadow p-1">
-            {DAY_NAMES.map((name, idx) => (
-              <button
-                key={idx}
-                onClick={() => setSelectedWeekday(idx)}
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-                  selectedWeekday === idx
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
+          <DayTabs
+            selected={selectedWeekday}
+            onSelect={setSelectedWeekday}
+            warningDays={warningDays}
+          />
         )}
 
         {/* Week dashboard */}
@@ -405,7 +435,7 @@ export function SchedulePage() {
 
         {/* Day content */}
         {hasSchedule && dayLoading && (
-          <div className="text-center py-12 text-gray-400">Laddar dagdata...</div>
+          <div className="card py-12 text-center text-surface-400">Laddar dagdata...</div>
         )}
 
         {hasSchedule && dayData && !dayLoading && (
@@ -418,26 +448,27 @@ export function SchedulePage() {
             {/* Filter bar + print button */}
             <div className="no-print">
               <FilterBar
-              searchTerm={searchTerm}
-              onSearchChange={setSearchTerm}
-              selectedClass={selectedClass}
-              onClassChange={setSelectedClass}
-              classList={classList}
-              quickFilter={quickFilter}
-              onQuickFilterChange={setQuickFilter}
-              onReset={handleResetFilters}
-              resultCount={{ shown: filteredStudentDays.length, total: dayData.student_days.length }}
-              hasActiveFilters={hasActiveFilters}
-            />
+                searchTerm={searchTerm}
+                onSearchChange={setSearchTerm}
+                selectedClass={selectedClass}
+                onClassChange={setSelectedClass}
+                classList={classList}
+                quickFilter={quickFilter}
+                onQuickFilterChange={setQuickFilter}
+                onReset={handleResetFilters}
+                resultCount={{ shown: filteredStudentDays.length, total: dayData.student_days.length }}
+                hasActiveFilters={hasActiveFilters}
+              />
             </div>
 
             {/* Print button */}
             <div className="no-print flex justify-end -mt-2">
               <button
                 onClick={() => window.print()}
-                className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                className="inline-flex items-center gap-1.5 text-sm text-surface-500 hover:text-surface-700 transition-colors"
               >
-                &#128424; Skriv ut
+                <Printer className="h-4 w-4" />
+                Skriv ut
               </button>
             </div>
 
@@ -462,24 +493,29 @@ export function SchedulePage() {
               onSetAbsentType={handleSetAbsentType}
               selectedIds={selectedStudentDayIds}
               onToggleSelect={handleToggleSelect}
+              absentStaffIds={absentStaffIds}
+              onStaffAbsence={(staffId, staffName) => setAbsenceModal({ staffId, staffName })}
               onToggleSelectAll={handleToggleSelectAll}
               onAddAssignment={(weekday) => setDayAssignmentModal({ weekday })}
               onEditAssignment={(da) => setDayAssignmentModal({ weekday: da.weekday, existing: da })}
               onDeleteAssignment={handleDeleteDayAssignment}
+              studentMap={studentMap}
+              staffShiftMap={staffShiftMap}
             />
 
-            {/* Staff summary — workload per staff member */}
+            {/* Staff summary */}
             <StaffSummary studentDays={dayData.student_days} />
 
             {/* Staff shifts */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              <h3 className="section-heading mb-2">
                 Personalens arbetspass
               </h3>
               <StaffShiftTable
                 shifts={filteredStaffShifts}
                 onUpdateShift={handleUpdateShift}
-                absenceDate={getDateForWeekday(currentYear, currentWeek, selectedWeekday)}
+                onStaffAbsence={(staffId, staffName) => setAbsenceModal({ staffId, staffName })}
+                absentStaffIds={absentStaffIds}
               />
             </div>
 
@@ -490,14 +526,12 @@ export function SchedulePage() {
 
         {/* Empty state — no schedule for this week */}
         {!hasSchedule && !weekLoading && !weekError && (
-          <div className="text-center py-16 bg-white rounded-lg shadow">
-            <p className="text-gray-500 text-lg mb-2">
-              Inget schema för vecka {currentWeek}, {currentYear}
-            </p>
-            <p className="text-gray-400 text-sm">
-              Klicka <strong>"Ny vecka"</strong> för att skapa ett nytt schema med elevernas standardtider,
-              eller <strong>"Kopiera förra"</strong> för att kopiera föregående veckas schema.
-            </p>
+          <div className="card">
+            <EmptyState
+              icon={Calendar}
+              title={`Inget schema för vecka ${currentWeek}, ${currentYear}`}
+              description='Klicka "Ny vecka" för att skapa ett nytt schema med elevernas standardtider, eller "Kopiera förra" för att kopiera föregående veckas schema.'
+            />
           </div>
         )}
       </div>
@@ -515,6 +549,26 @@ export function SchedulePage() {
             : (data) => handleCreateDayAssignment(data as DayAssignmentCreate)
           }
           onClose={() => setDayAssignmentModal(null)}
+        />
+      )}
+
+      {/* Confirm dialog */}
+      <ConfirmDialog
+        open={confirmDialog !== null}
+        title={confirmDialog?.title ?? ''}
+        message={confirmDialog?.message ?? ''}
+        variant={confirmDialog?.variant ?? 'primary'}
+        onConfirm={confirmDialog?.onConfirm ?? (() => {})}
+        onCancel={() => setConfirmDialog(null)}
+      />
+
+      {/* Staff absence modal */}
+      {absenceModal && (
+        <StaffAbsenceModal
+          staffId={absenceModal.staffId}
+          staffName={absenceModal.staffName}
+          absenceDate={getDateForWeekday(currentYear, currentWeek, selectedWeekday)}
+          onClose={() => setAbsenceModal(null)}
         />
       )}
 

@@ -2,6 +2,7 @@
  * Week navigation header with status and actions.
  */
 
+import { ChevronLeft, ChevronRight, Plus, Copy, CheckCircle2, PenLine } from 'lucide-react';
 import { Button } from '../Common/Button';
 import type { WeekSchedule } from '../../types/weekSchedule';
 
@@ -31,31 +32,31 @@ export function WeekHeader({
   onToggleStatus,
 }: WeekHeaderProps) {
   return (
-    <div className="bg-white rounded-lg shadow p-4">
+    <div className="card p-4">
       <div className="flex items-center justify-between">
         {/* Week navigation */}
-        <div className="flex items-center space-x-4">
-          <Button size="sm" variant="secondary" onClick={onPrevWeek}>
-            &larr;
+        <div className="flex items-center gap-3">
+          <Button size="sm" variant="ghost" onClick={onPrevWeek} icon={ChevronLeft}>
+            <span className="sr-only">Föregående</span>
           </Button>
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900">
+          <div className="text-center min-w-[140px]">
+            <h1 className="text-xl font-semibold text-surface-900 text-display">
               Vecka {week}, {year}
             </h1>
           </div>
-          <Button size="sm" variant="secondary" onClick={onNextWeek}>
-            &rarr;
+          <Button size="sm" variant="ghost" onClick={onNextWeek} icon={ChevronRight}>
+            <span className="sr-only">Nästa</span>
           </Button>
         </div>
 
         {/* Actions + status */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-3">
           {!weekSchedule && !isLoading && (
             <>
-              <Button onClick={onCreateWeek} isLoading={isCreating}>
+              <Button onClick={onCreateWeek} isLoading={isCreating} icon={Plus}>
                 Ny vecka
               </Button>
-              <Button variant="secondary" onClick={onCopyWeek}>
+              <Button variant="outline" onClick={onCopyWeek} icon={Copy}>
                 Kopiera förra
               </Button>
             </>
@@ -65,13 +66,18 @@ export function WeekHeader({
             <button
               type="button"
               onClick={onToggleStatus}
-              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors cursor-pointer ${
                 weekSchedule.status === 'published'
-                  ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                  : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                  ? 'bg-success-50 text-success-700 hover:bg-success-100'
+                  : 'bg-warning-50 text-warning-700 hover:bg-warning-100'
               }`}
-              title={weekSchedule.status === 'published' ? 'Klicka f\u00f6r att avpublicera' : 'Klicka f\u00f6r att publicera'}
+              title={weekSchedule.status === 'published' ? 'Klicka för att avpublicera' : 'Klicka för att publicera'}
             >
+              {weekSchedule.status === 'published' ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <PenLine className="h-4 w-4" />
+              )}
               {weekSchedule.status === 'published' ? 'Publicerad' : 'Utkast'}
             </button>
           )}

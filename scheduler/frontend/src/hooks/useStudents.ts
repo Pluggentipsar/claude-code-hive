@@ -107,7 +107,7 @@ export function useUpdateCareTime() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data, studentId }: { id: string; data: CareTimeUpdate; studentId: string }) =>
+    mutationFn: ({ id, data, studentId: _studentId }: { id: string; data: CareTimeUpdate; studentId: string }) =>
       studentsApi.updateCareTime(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['care-times', variables.studentId] });
@@ -122,7 +122,7 @@ export function useDeleteCareTime() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, studentId }: { id: string; studentId: string }) =>
+    mutationFn: ({ id, studentId: _studentId }: { id: string; studentId: string }) =>
       studentsApi.deleteCareTime(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['care-times', variables.studentId] });

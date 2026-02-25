@@ -1,9 +1,9 @@
 /**
  * StaffSummary — shows how many students each staff member is assigned to (FM/EM).
- * Highlights overloaded staff (more than threshold).
  */
 
 import { useMemo } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import type { StudentDay } from '../../types/weekSchedule';
 
 interface StaffSummaryProps {
@@ -46,13 +46,14 @@ export function StaffSummary({ studentDays }: StaffSummaryProps) {
   const overloaded = staffCounts.filter(s => s.fm > OVERLOAD_THRESHOLD || s.em > OVERLOAD_THRESHOLD);
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+    <div className="card overflow-hidden">
+      <div className="px-4 py-3 bg-surface-50 border-b border-surface-100 flex items-center justify-between">
+        <h3 className="section-heading">
           Personalbelastning
         </h3>
         {overloaded.length > 0 && (
-          <span className="text-xs text-amber-600 font-medium">
+          <span className="inline-flex items-center gap-1 text-xs text-warning-600 font-medium">
+            <AlertTriangle className="h-3.5 w-3.5" />
             {overloaded.length} med hög belastning
           </span>
         )}
@@ -63,17 +64,17 @@ export function StaffSummary({ studentDays }: StaffSummaryProps) {
           return (
             <div
               key={s.id}
-              className={`flex items-center gap-2 text-sm ${isOverloaded ? 'text-amber-700' : 'text-gray-700'}`}
+              className={`flex items-center gap-2 text-sm ${isOverloaded ? 'text-warning-700' : 'text-surface-700'}`}
             >
               <span className="font-medium">{s.name}</span>
-              <span className="text-gray-400">|</span>
+              <span className="text-surface-300">|</span>
               <span>
-                FM <span className={`font-semibold ${s.fm > OVERLOAD_THRESHOLD ? 'text-amber-600' : 'text-blue-600'}`}>{s.fm}</span>
+                FM <span className={`font-semibold tabular-nums ${s.fm > OVERLOAD_THRESHOLD ? 'text-warning-600' : 'text-primary-600'}`}>{s.fm}</span>
               </span>
               <span>
-                EM <span className={`font-semibold ${s.em > OVERLOAD_THRESHOLD ? 'text-amber-600' : 'text-blue-600'}`}>{s.em}</span>
+                EM <span className={`font-semibold tabular-nums ${s.em > OVERLOAD_THRESHOLD ? 'text-warning-600' : 'text-primary-600'}`}>{s.em}</span>
               </span>
-              {isOverloaded && <span className="text-amber-500" title="Hög belastning">&#9888;</span>}
+              {isOverloaded && <AlertTriangle className="h-3.5 w-3.5 text-warning-500" />}
             </div>
           );
         })}

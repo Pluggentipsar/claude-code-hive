@@ -27,53 +27,44 @@ export function StaffForm({ staff, onSubmit, onCancel, isLoading }: StaffFormPro
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Parse certifications from comma-separated string
     const certifications = formData.care_certifications
       .split(',')
       .map(c => c.trim())
       .filter(c => c.length > 0);
-
     const submitData = {
       ...formData,
-      grade_group: formData.grade_group || null,
+      grade_group: (formData.grade_group || null) as 'grades_1_3' | 'grades_4_6' | null,
       care_certifications: certifications,
     };
-
     await onSubmit(submitData);
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Basic info */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <h3 className="font-semibold text-gray-900 mb-4">Grunduppgifter</h3>
+      <div className="bg-surface-50 p-4 rounded-xl">
+        <h3 className="font-semibold text-surface-900 mb-4">Grunduppgifter</h3>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Förnamn *
-            </label>
+            <label className="label">Förnamn *</label>
             <input
               type="text"
               required
               value={formData.first_name}
               onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              className="input-base"
               placeholder="Anna"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Efternamn *
-            </label>
+            <label className="label">Efternamn *</label>
             <input
               type="text"
               required
               value={formData.last_name}
               onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              className="input-base"
               placeholder="Andersson"
             />
           </div>
@@ -81,9 +72,7 @@ export function StaffForm({ staff, onSubmit, onCancel, isLoading }: StaffFormPro
 
         {!staff && (
           <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Personnummer * (YYMMDDXXXX)
-            </label>
+            <label className="label">Personnummer * (YYMMDDXXXX)</label>
             <input
               type="text"
               required
@@ -91,11 +80,11 @@ export function StaffForm({ staff, onSubmit, onCancel, isLoading }: StaffFormPro
               onChange={(e) =>
                 setFormData({ ...formData, personal_number: e.target.value })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              className="input-base"
               placeholder="8503201234"
               pattern="\d{10,13}"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-surface-400 mt-1.5">
               10 eller 12 siffror (ÅÅMMDDXXXX eller ÅÅÅÅMMDDXXXX)
             </p>
           </div>
@@ -103,89 +92,80 @@ export function StaffForm({ staff, onSubmit, onCancel, isLoading }: StaffFormPro
       </div>
 
       {/* Role and schedule */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <h3 className="font-semibold text-gray-900 mb-4">Tjänst</h3>
+      <div className="bg-surface-50 p-4 rounded-xl">
+        <h3 className="font-semibold text-surface-900 mb-4">Tjänst</h3>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Roll *
-            </label>
+            <label className="label">Roll *</label>
             <select
               value={formData.role}
               onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              className="input-base"
             >
-              <option value="elevassistent">👤 Elevassistent</option>
-              <option value="pedagog">🎓 Pedagog</option>
-              <option value="fritidspedagog">⚽ Fritidspedagog</option>
+              <option value="elevassistent">Elevassistent</option>
+              <option value="pedagog">Pedagog</option>
+              <option value="fritidspedagog">Fritidspedagog</option>
             </select>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Schematyp *
-            </label>
+            <label className="label">Schematyp *</label>
             <select
               value={formData.schedule_type}
               onChange={(e) => setFormData({ ...formData, schedule_type: e.target.value as any })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              className="input-base"
             >
               <option value="fixed">Fast schema (varje vecka)</option>
-              <option value="two_week_rotation">Tv\u00e5veckorsschema (rullande)</option>
+              <option value="two_week_rotation">Tvåveckorsschema (rullande)</option>
             </select>
           </div>
         </div>
 
         <div className="mt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Stadium
-          </label>
+          <label className="label">Stadium</label>
           <select
             value={formData.grade_group}
             onChange={(e) => setFormData({ ...formData, grade_group: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+            className="input-base"
           >
-            <option value="">B\u00e5da stadier</option>
-            <option value="grades_1_3">L\u00e5gstadium (1-3)</option>
+            <option value="">Båda stadier</option>
+            <option value="grades_1_3">Lågstadium (1-3)</option>
             <option value="grades_4_6">Mellanstadium (4-6)</option>
           </select>
-          <p className="text-xs text-gray-500 mt-1">
-            Anv\u00e4nds f\u00f6r att rekommendera personal vid FM/EM-tilldelning.
+          <p className="text-xs text-surface-400 mt-1.5">
+            Används för att rekommendera personal vid FM/EM-tilldelning.
           </p>
         </div>
       </div>
 
       {/* Certifications */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <h3 className="font-semibold text-gray-900 mb-4">Vårdcertifieringar</h3>
+      <div className="bg-surface-50 p-4 rounded-xl">
+        <h3 className="font-semibold text-surface-900 mb-4">Vårdcertifieringar</h3>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Certifieringar (frivilligt)
-          </label>
+          <label className="label">Certifieringar (frivilligt)</label>
           <input
             type="text"
             value={formData.care_certifications}
             onChange={(e) => setFormData({ ...formData, care_certifications: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+            className="input-base"
             placeholder="epilepsi, diabetes, allergi"
           />
-          <p className="text-xs text-gray-500 mt-1">
-            ⚕️ Separera med komma. T.ex: "epilepsi, diabetes, allergi"
+          <p className="text-xs text-surface-400 mt-1.5">
+            Separera med komma. T.ex: "epilepsi, diabetes, allergi"
           </p>
         </div>
       </div>
 
-      {/* Work Hours - Only show when editing existing staff */}
+      {/* Work Hours */}
       {staff && (
-        <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="bg-surface-50 p-4 rounded-xl">
           <WorkHoursTable staffId={staff.id} />
         </div>
       )}
 
       {/* Actions */}
-      <div className="flex space-x-3 pt-4 border-t">
+      <div className="flex gap-3 pt-4 border-t border-surface-100">
         <Button
           type="button"
           variant="secondary"

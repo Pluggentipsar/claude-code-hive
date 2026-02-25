@@ -3,13 +3,17 @@
  */
 
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'sonner';
+import { AnimatePresence } from 'framer-motion';
 import { MainLayout } from './components/Layout/MainLayout';
+import { PageTransition } from './components/Layout/PageTransition';
 import { SchedulePage, StudentsPage, StaffPage, ClassesPage } from './pages';
 import { ImportPage } from './pages/ImportPage';
 import { LoginPage } from './pages/LoginPage';
 import { useAuthStore } from './stores/authStore';
+import { LoadingSpinner } from './components/Common/LoadingSpinner';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -22,6 +26,22 @@ const queryClient = new QueryClient({
   },
 });
 
+function AnimatedRoutes() {
+  const location = useLocation();
+
+  return (
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route path="/" element={<PageTransition><SchedulePage /></PageTransition>} />
+        <Route path="/students" element={<PageTransition><StudentsPage /></PageTransition>} />
+        <Route path="/staff" element={<PageTransition><StaffPage /></PageTransition>} />
+        <Route path="/classes" element={<PageTransition><ClassesPage /></PageTransition>} />
+        <Route path="/import" element={<PageTransition><ImportPage /></PageTransition>} />
+      </Routes>
+    </AnimatePresence>
+  );
+}
+
 function AuthenticatedApp() {
   const { user, initialized, checkAuth } = useAuthStore();
 
@@ -31,8 +51,11 @@ function AuthenticatedApp() {
 
   if (!initialized) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Laddar...</div>
+      <div className="min-h-screen bg-surface-50 flex flex-col items-center justify-center gap-4">
+        <div className="w-10 h-10 rounded-2xl bg-primary-600 flex items-center justify-center">
+          <span className="text-white font-bold text-lg">K</span>
+        </div>
+        <LoadingSpinner size="md" label="Laddar Kålgården..." />
       </div>
     );
   }
@@ -43,13 +66,7 @@ function AuthenticatedApp() {
 
   return (
     <MainLayout>
-      <Routes>
-        <Route path="/" element={<SchedulePage />} />
-        <Route path="/students" element={<StudentsPage />} />
-        <Route path="/staff" element={<StaffPage />} />
-        <Route path="/classes" element={<ClassesPage />} />
-        <Route path="/import" element={<ImportPage />} />
-      </Routes>
+      <AnimatedRoutes />
     </MainLayout>
   );
 }
@@ -59,6 +76,18 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthenticatedApp />
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            className: 'font-sans',
+            style: {
+              borderRadius: '1rem',
+              fontSize: '0.875rem',
+            },
+          }}
+          richColors
+          closeButton
+        />
       </BrowserRouter>
     </QueryClientProvider>
   );

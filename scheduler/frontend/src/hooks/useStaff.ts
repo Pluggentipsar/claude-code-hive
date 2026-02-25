@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { staffApi } from '../api';
-import type { StaffCreate, StaffUpdate, AbsenceCreate, WorkHourCreate, WorkHourUpdate } from '../types';
+import type { StaffCreate, StaffUpdate, AbsenceCreate, BulkAbsenceCreate, WorkHourCreate, WorkHourUpdate } from '../types';
 
 /**
  * Fetch all staff
@@ -92,7 +92,29 @@ export function useCreateAbsence() {
       staffApi.createAbsence(staffId, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['staff', variables.staffId, 'absences'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] }); // Refresh schedules
+      queryClient.invalidateQueries({ queryKey: ['dayData'] });
+      queryClient.invalidateQueries({ queryKey: ['warnings'] });
+      queryClient.invalidateQueries({ queryKey: ['weekSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    },
+  });
+}
+
+/**
+ * Create bulk absences (date range)
+ */
+export function useCreateBulkAbsence() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ staffId, data }: { staffId: string; data: BulkAbsenceCreate }) =>
+      staffApi.createBulkAbsences(staffId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['staff', variables.staffId, 'absences'] });
+      queryClient.invalidateQueries({ queryKey: ['dayData'] });
+      queryClient.invalidateQueries({ queryKey: ['warnings'] });
+      queryClient.invalidateQueries({ queryKey: ['weekSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
     },
   });
 }
@@ -149,7 +171,7 @@ export function useUpdateWorkHour() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data, staffId }: { id: string; data: WorkHourUpdate; staffId: string }) =>
+    mutationFn: ({ id, data, staffId: _staffId }: { id: string; data: WorkHourUpdate; staffId: string }) =>
       staffApi.updateWorkHour(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['work-hours', variables.staffId] });
@@ -164,7 +186,7 @@ export function useDeleteWorkHour() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, staffId }: { id: string; staffId: string }) =>
+    mutationFn: ({ id, staffId: _staffId }: { id: string; staffId: string }) =>
       staffApi.deleteWorkHour(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['work-hours', variables.staffId] });

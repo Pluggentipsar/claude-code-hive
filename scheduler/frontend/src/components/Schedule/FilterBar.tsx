@@ -1,7 +1,8 @@
 /**
  * FilterBar — compact filter row above the student/staff tables.
- * Search, class dropdown, quick filter, reset button, and result counter.
  */
+
+import { Search, X } from 'lucide-react';
 
 export type QuickFilter = 'all' | 'missing_staff' | 'special_needs' | 'warnings';
 
@@ -31,18 +32,16 @@ export function FilterBar({
   hasActiveFilters,
 }: FilterBarProps) {
   return (
-    <div className="bg-white rounded-lg shadow px-4 py-2 flex items-center gap-3 flex-wrap">
+    <div className="card px-4 py-2.5 flex items-center gap-3 flex-wrap">
       {/* Text search */}
       <div className="relative flex-1 min-w-[180px] max-w-xs">
-        <span className="absolute inset-y-0 left-2 flex items-center text-gray-400 pointer-events-none text-sm">
-          &#128269;
-        </span>
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400 pointer-events-none" />
         <input
           type="text"
           value={searchTerm}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Sök elev/personal..."
-          className="w-full pl-7 pr-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
+          className="input-base pl-9"
         />
       </div>
 
@@ -50,7 +49,7 @@ export function FilterBar({
       <select
         value={selectedClass}
         onChange={(e) => onClassChange(e.target.value)}
-        className="text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        className="input-base w-auto min-w-[140px]"
       >
         <option value="">Alla klasser</option>
         {classList.map((c) => (
@@ -64,7 +63,7 @@ export function FilterBar({
       <select
         value={quickFilter}
         onChange={(e) => onQuickFilterChange(e.target.value as QuickFilter)}
-        className="text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        className="input-base w-auto min-w-[160px]"
       >
         <option value="all">Visa: Alla</option>
         <option value="missing_staff">Saknar personal</option>
@@ -72,19 +71,20 @@ export function FilterBar({
         <option value="warnings">Varningar</option>
       </select>
 
-      {/* Reset button — only shown when filters are active */}
+      {/* Reset button */}
       {hasActiveFilters && (
         <button
           onClick={onReset}
-          className="text-sm text-gray-500 hover:text-gray-700 underline"
+          className="inline-flex items-center gap-1 text-sm text-surface-500 hover:text-surface-700 transition-colors"
         >
+          <X className="h-3.5 w-3.5" />
           Rensa
         </button>
       )}
 
       {/* Result counter */}
       {hasActiveFilters && (
-        <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">
+        <span className="text-xs text-surface-400 ml-auto whitespace-nowrap">
           Visar {resultCount.shown} av {resultCount.total} elever
         </span>
       )}

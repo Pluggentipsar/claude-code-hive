@@ -3,6 +3,8 @@
  */
 
 import { useState } from 'react';
+import { Modal } from '../Common/Modal';
+import { Button } from '../Common/Button';
 import type { Staff } from '../../types';
 import type {
   StudentDay,
@@ -23,7 +25,7 @@ interface DayAssignmentModalProps {
 }
 
 const ROLE_OPTIONS: { value: DayAssignmentRole; label: string }[] = [
-  { value: 'school_support', label: 'Skolst\u00f6d' },
+  { value: 'school_support', label: 'Skolstöd' },
   { value: 'double_staffing', label: 'Dubbelbemanning' },
   { value: 'extra_care', label: 'Extra omsorg' },
 ];
@@ -39,10 +41,8 @@ export function DayAssignmentModal({
 }: DayAssignmentModalProps) {
   const isEdit = !!existing;
 
-  // Build list of students with care needs (or all if editing)
   const careStudents = studentDays
     .filter((sd, idx, arr) => {
-      // Deduplicate by student_id
       return arr.findIndex(s => s.student_id === sd.student_id) === idx;
     })
     .filter(sd => sd.has_care_needs || (existing && sd.student_id === existing.student_id));
@@ -80,131 +80,122 @@ export function DayAssignmentModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div className="border-b pb-3">
-            <h2 className="text-lg font-bold text-gray-900">
-              {isEdit ? 'Redigera KTS-tilldelning' : 'Ny KTS-tilldelning'}
-            </h2>
-          </div>
+    <Modal open onClose={onClose}>
+      <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <div className="border-b border-surface-100 pb-4">
+          <h2 className="text-lg font-semibold text-surface-900">
+            {isEdit ? 'Redigera KTS-tilldelning' : 'Ny KTS-tilldelning'}
+          </h2>
+        </div>
 
-          {/* Student (only for create) */}
-          {!isEdit && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Elev *</label>
-              <select
-                required
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">V\u00e4lj elev...</option>
-                {careStudents.map(sd => (
-                  <option key={sd.student_id} value={sd.student_id}>
-                    {sd.student_name} ({sd.class_name || 'Utan klass'})
-                  </option>
-                ))}
-              </select>
-              {careStudents.length === 0 && (
-                <p className="text-xs text-gray-400 mt-1">Inga elever med specialbehov hittades.</p>
-              )}
-            </div>
-          )}
-
-          {isEdit && existing && (
-            <div className="text-sm text-gray-600">
-              Elev: <span className="font-medium">{existing.student_name}</span>
-            </div>
-          )}
-
-          {/* Staff */}
+        {/* Student (only for create) */}
+        {!isEdit && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Personal *</label>
+            <label className="label">Elev *</label>
             <select
               required
-              value={staffId}
-              onChange={(e) => setStaffId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              className="input-base"
             >
-              <option value="">V\u00e4lj personal...</option>
-              {staffList.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.first_name} {s.last_name}
+              <option value="">Välj elev...</option>
+              {careStudents.map(sd => (
+                <option key={sd.student_id} value={sd.student_id}>
+                  {sd.student_name} ({sd.class_name || 'Utan klass'})
                 </option>
               ))}
             </select>
+            {careStudents.length === 0 && (
+              <p className="text-xs text-surface-400 mt-1">Inga elever med specialbehov hittades.</p>
+            )}
           </div>
+        )}
 
-          {/* Times */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Starttid *</label>
-              <input
-                type="time"
-                required
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Sluttid *</label>
-              <input
-                type="time"
-                required
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        {isEdit && existing && (
+          <div className="text-sm text-surface-600">
+            Elev: <span className="font-medium text-surface-900">{existing.student_name}</span>
           </div>
+        )}
 
-          {/* Role */}
+        {/* Staff */}
+        <div>
+          <label className="label">Personal *</label>
+          <select
+            required
+            value={staffId}
+            onChange={(e) => setStaffId(e.target.value)}
+            className="input-base"
+          >
+            <option value="">Välj personal...</option>
+            {staffList.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.first_name} {s.last_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Times */}
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Roll *</label>
-            <select
-              required
-              value={role}
-              onChange={(e) => setRole(e.target.value as DayAssignmentRole)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              {ROLE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Anteckning</label>
+            <label className="label">Starttid *</label>
             <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Valfri anteckning..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              type="time"
+              required
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="input-base tabular-nums"
             />
           </div>
-
-          {/* Actions */}
-          <div className="flex space-x-3 pt-2 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Avbryt
-            </button>
-            <button
-              type="submit"
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              {isEdit ? 'Spara' : 'Skapa'}
-            </button>
+          <div>
+            <label className="label">Sluttid *</label>
+            <input
+              type="time"
+              required
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              className="input-base tabular-nums"
+            />
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+
+        {/* Role */}
+        <div>
+          <label className="label">Roll *</label>
+          <select
+            required
+            value={role}
+            onChange={(e) => setRole(e.target.value as DayAssignmentRole)}
+            className="input-base"
+          >
+            {ROLE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className="label">Anteckning</label>
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Valfri anteckning..."
+            className="input-base"
+          />
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 pt-3 border-t border-surface-100">
+          <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
+            Avbryt
+          </Button>
+          <Button type="submit" variant="primary" className="flex-1">
+            {isEdit ? 'Spara' : 'Skapa'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

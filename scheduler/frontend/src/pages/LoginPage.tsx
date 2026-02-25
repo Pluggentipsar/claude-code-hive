@@ -1,11 +1,13 @@
 /**
- * Login page component
+ * Login page component — split layout with gradient panel
  */
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
 import { authApi } from '../api/auth';
 import { getErrorMessage } from '../api/client';
+import { Button } from '../components/Common/Button';
 
 export function LoginPage() {
   const { login } = useAuthStore();
@@ -68,153 +70,173 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="max-w-md w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Kålgårdens Schema
+    <div className="min-h-screen bg-surface-50 flex">
+      {/* Decorative gradient panel */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-20 w-72 h-72 rounded-full bg-white/20 blur-3xl" />
+          <div className="absolute bottom-32 right-16 w-96 h-96 rounded-full bg-accent-400/20 blur-3xl" />
+        </div>
+        <div className="relative z-10 flex flex-col justify-center px-16">
+          <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-8">
+            <span className="text-white font-bold text-2xl">K</span>
+          </div>
+          <h1 className="text-4xl font-bold text-white text-display leading-tight">
+            Kålgårdens<br />Schemaläggning
           </h1>
-          <p className="mt-2 text-gray-600">
-            Schemaläggningssystem
+          <p className="mt-4 text-primary-200 text-lg max-w-md">
+            Smart schemaläggning för fritidsverksamhet. Enkelt, snabbt och pålitligt.
           </p>
         </div>
+      </div>
 
-        <div className="bg-white rounded-lg shadow-md p-8">
-          {setupDone && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded text-green-800 text-sm">
-              Admin-konto skapat! Logga in nedan.
+      {/* Form panel */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="w-full max-w-md"
+        >
+          {/* Mobile logo */}
+          <div className="lg:hidden text-center mb-8">
+            <div className="w-12 h-12 rounded-2xl bg-primary-600 flex items-center justify-center mx-auto mb-4">
+              <span className="text-white font-bold text-xl">K</span>
             </div>
-          )}
+            <h1 className="text-2xl font-bold text-surface-900 text-display">
+              Kålgårdens Schema
+            </h1>
+            <p className="mt-1 text-surface-500">Schemaläggningssystem</p>
+          </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
-              {error}
-            </div>
-          )}
-
-          {setupMode ? (
-            <>
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">
-                Skapa första admin-kontot
-              </h2>
-              <form onSubmit={handleSetup} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Förnamn
-                    </label>
-                    <input
-                      type="text"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Efternamn
-                    </label>
-                    <input
-                      type="text"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    E-post
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lösenord (minst 8 tecken)
-                  </label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={8}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2 px-4 bg-green-600 text-white font-medium rounded-md hover:bg-green-700 disabled:opacity-50"
-                >
-                  {loading ? 'Skapar...' : 'Skapa admin-konto'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSetupMode(false)}
-                  className="w-full py-2 px-4 text-gray-600 font-medium rounded-md hover:bg-gray-100"
-                >
-                  Tillbaka till inloggning
-                </button>
-              </form>
-            </>
-          ) : (
-            <>
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">
-                Logga in
-              </h2>
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    E-post
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lösenord
-                  </label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2 px-4 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {loading ? 'Loggar in...' : 'Logga in'}
-                </button>
-              </form>
-              <div className="mt-6 pt-4 border-t border-gray-200 text-center">
-                <button
-                  onClick={() => setSetupMode(true)}
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                >
-                  Första gången? Skapa admin-konto
-                </button>
+          <div className="card p-8">
+            {setupDone && (
+              <div className="mb-4 p-3 bg-success-50 border border-success-100 rounded-xl text-success-700 text-sm">
+                Admin-konto skapat! Logga in nedan.
               </div>
-            </>
-          )}
-        </div>
+            )}
+
+            {error && (
+              <div className="mb-4 p-3 bg-danger-50 border border-danger-100 rounded-xl text-danger-700 text-sm">
+                {error}
+              </div>
+            )}
+
+            {setupMode ? (
+              <>
+                <h2 className="text-xl font-semibold text-surface-900 mb-6">
+                  Skapa första admin-kontot
+                </h2>
+                <form onSubmit={handleSetup} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Förnamn</label>
+                      <input
+                        type="text"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        required
+                        className="input-base"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Efternamn</label>
+                      <input
+                        type="text"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        required
+                        className="input-base"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label">E-post</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className="input-base"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Lösenord (minst 8 tecken)</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      className="input-base"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="success"
+                    disabled={loading}
+                    isLoading={loading}
+                    className="w-full"
+                  >
+                    Skapa admin-konto
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setSetupMode(false)}
+                    className="w-full py-2 text-sm text-surface-500 hover:text-surface-700 font-medium transition-colors"
+                  >
+                    Tillbaka till inloggning
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-semibold text-surface-900 mb-6">
+                  Logga in
+                </h2>
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="label">E-post</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoFocus
+                      className="input-base"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Lösenord</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="input-base"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    isLoading={loading}
+                    className="w-full"
+                  >
+                    Logga in
+                  </Button>
+                </form>
+                <div className="mt-6 pt-4 border-t border-surface-100 text-center">
+                  <button
+                    onClick={() => setSetupMode(true)}
+                    className="text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
+                  >
+                    Första gången? Skapa admin-konto
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </motion.div>
       </div>
     </div>
   );

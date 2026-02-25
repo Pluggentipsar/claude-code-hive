@@ -3,11 +3,13 @@
  */
 
 import { useState } from 'react';
+import { UserPlus } from 'lucide-react';
 import { useStaff, useCreateStaff, useUpdateStaff } from '../hooks/useStaff';
 import { StaffList } from '../components/Staff/StaffList';
 import { StaffForm } from '../components/Staff/StaffForm';
 import { LoadingSpinner } from '../components/Common/LoadingSpinner';
 import { ErrorMessage } from '../components/Common/ErrorMessage';
+import { EmptyState } from '../components/Common/EmptyState';
 import { getErrorMessage } from '../api';
 import type { Staff } from '../types';
 
@@ -51,7 +53,7 @@ export function StaffPage() {
   if (isLoading) {
     return (
       <div className="p-6">
-        <LoadingSpinner />
+        <LoadingSpinner label="Laddar personal..." />
       </div>
     );
   }
@@ -80,24 +82,20 @@ export function StaffPage() {
           {/* Staff form */}
           <div>
             {showForm ? (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-6">
+              <div className="card p-6">
+                <h2 className="text-lg font-semibold text-surface-900 mb-6">
                   {selectedStaff ? 'Redigera Personal' : 'Ny Personal'}
                 </h2>
 
                 {createMutation.isError && (
                   <div className="mb-4">
-                    <ErrorMessage
-                      message={getErrorMessage(createMutation.error)}
-                    />
+                    <ErrorMessage message={getErrorMessage(createMutation.error)} />
                   </div>
                 )}
 
                 {updateMutation.isError && (
                   <div className="mb-4">
-                    <ErrorMessage
-                      message={getErrorMessage(updateMutation.error)}
-                    />
+                    <ErrorMessage message={getErrorMessage(updateMutation.error)} />
                   </div>
                 )}
 
@@ -109,16 +107,14 @@ export function StaffPage() {
                 />
               </div>
             ) : (
-              <div className="bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-                <p className="text-gray-500 mb-4">
-                  Välj en personal från listan eller skapa en ny
-                </p>
-                <button
-                  onClick={handleCreateNew}
-                  className="text-primary-600 hover:text-primary-700 font-medium"
-                >
-                  + Lägg till ny personal
-                </button>
+              <div className="card">
+                <EmptyState
+                  icon={UserPlus}
+                  title="Välj en personal"
+                  description="Välj en personal från listan eller skapa en ny"
+                  actionLabel="Lägg till ny personal"
+                  onAction={handleCreateNew}
+                />
               </div>
             )}
           </div>

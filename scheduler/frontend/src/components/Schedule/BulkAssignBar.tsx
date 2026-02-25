@@ -1,9 +1,9 @@
 /**
  * BulkAssignBar — floating bar shown when students are selected.
- * Allows assigning one staff member to FM/EM for all selected students at once.
  */
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import type { Staff } from '../../types';
 
 interface BulkAssignBarProps {
@@ -23,7 +23,12 @@ export function BulkAssignBar({ selectedCount, staffList, onAssign, onClear }: B
   };
 
   return (
-    <div className="bg-blue-600 text-white rounded-lg shadow-lg px-4 py-3 flex items-center gap-4 flex-wrap">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      className="bg-primary-700 text-white rounded-2xl shadow-float px-5 py-3 flex items-center gap-4 flex-wrap"
+    >
       <span className="text-sm font-medium">
         {selectedCount} elev{selectedCount !== 1 ? 'er' : ''} markerade
       </span>
@@ -31,7 +36,7 @@ export function BulkAssignBar({ selectedCount, staffList, onAssign, onClear }: B
       <select
         value={field}
         onChange={(e) => setField(e.target.value as 'fm_staff_id' | 'em_staff_id')}
-        className="text-sm rounded px-2 py-1.5 text-gray-900 border-0"
+        className="text-sm rounded-xl px-3 py-1.5 text-surface-900 border-0 bg-white/90"
       >
         <option value="fm_staff_id">FM Fritids</option>
         <option value="em_staff_id">EM Fritids</option>
@@ -40,7 +45,7 @@ export function BulkAssignBar({ selectedCount, staffList, onAssign, onClear }: B
       <select
         value={staffId}
         onChange={(e) => setStaffId(e.target.value)}
-        className="text-sm rounded px-2 py-1.5 text-gray-900 border-0 min-w-[160px]"
+        className="text-sm rounded-xl px-3 py-1.5 text-surface-900 border-0 bg-white/90 min-w-[160px]"
       >
         <option value="">-- Ingen (ta bort) --</option>
         {staffList.map((s) => (
@@ -52,17 +57,17 @@ export function BulkAssignBar({ selectedCount, staffList, onAssign, onClear }: B
 
       <button
         onClick={handleAssign}
-        className="bg-white text-blue-600 text-sm font-medium px-3 py-1.5 rounded hover:bg-blue-50"
+        className="bg-white text-primary-700 text-sm font-medium px-4 py-1.5 rounded-xl hover:bg-primary-50 transition-colors"
       >
         Tilldela
       </button>
 
       <button
         onClick={onClear}
-        className="text-blue-200 hover:text-white text-sm underline ml-auto"
+        className="text-primary-200 hover:text-white text-sm underline underline-offset-2 ml-auto transition-colors"
       >
         Avmarkera alla
       </button>
-    </div>
+    </motion.div>
   );
 }

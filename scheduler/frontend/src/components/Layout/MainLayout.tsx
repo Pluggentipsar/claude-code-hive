@@ -6,7 +6,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Calendar,
-  GraduationCap,
   Users,
   BookOpen,
   FileSpreadsheet,
@@ -26,9 +25,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { name: 'Schema', path: '/', icon: Calendar },
-  { name: 'Elever', path: '/students', icon: GraduationCap },
+  { name: 'Klasser & Elever', path: '/classes', icon: BookOpen },
   { name: 'Personal', path: '/staff', icon: Users },
-  { name: 'Klasser', path: '/classes', icon: BookOpen },
   { name: 'Import/Export', path: '/import', icon: FileSpreadsheet },
 ];
 

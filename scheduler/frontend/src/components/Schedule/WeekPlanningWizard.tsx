@@ -107,7 +107,7 @@ export function WeekPlanningWizard({
   onCopyWeek,
   onAutoAssign,
   onPublish,
-  onGoToStep,
+  onGoToStep: _onGoToStep,
   completedSteps,
 }: WeekPlanningWizardProps) {
   const [currentStep, setCurrentStep] = useState(() => {
@@ -121,23 +121,6 @@ export function WeekPlanningWizard({
 
   const step = STEPS[currentStep - 1];
   const StepIcon = step.icon;
-
-  const handleAction = () => {
-    switch (currentStep) {
-      case 1:
-        // Let user choose between create new or copy
-        break;
-      case 3:
-        onAutoAssign();
-        break;
-      case 7:
-        onPublish();
-        break;
-      default:
-        onGoToStep(currentStep);
-        break;
-    }
-  };
 
   const canGoNext = currentStep < 7;
   const canGoBack = currentStep > 1;

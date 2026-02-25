@@ -274,7 +274,6 @@ export function useSubstituteReport(weekId: string | null) {
 // ============================================================
 
 export function useSuggestAssignments(weekId: string) {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: (weekday: number) => weekSchedulesApi.suggestAssignments(weekId, weekday),
   });

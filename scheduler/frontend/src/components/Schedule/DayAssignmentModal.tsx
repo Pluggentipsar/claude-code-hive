@@ -20,6 +20,7 @@ interface DayAssignmentModalProps {
   staffList: Staff[];
   studentDays: StudentDay[];
   existing?: DayAssignment;
+  prefilledStudentId?: string;
   onSave: (data: DayAssignmentCreate | DayAssignmentUpdate) => void;
   onClose: () => void;
 }
@@ -36,18 +37,21 @@ export function DayAssignmentModal({
   staffList,
   studentDays,
   existing,
+  prefilledStudentId,
   onSave,
   onClose,
 }: DayAssignmentModalProps) {
   const isEdit = !!existing;
 
-  const careStudents = studentDays
-    .filter((sd, idx, arr) => {
-      return arr.findIndex(s => s.student_id === sd.student_id) === idx;
-    })
-    .filter(sd => sd.has_care_needs || (existing && sd.student_id === existing.student_id));
+  // When prefilledStudentId is provided, show ALL students; otherwise only care_needs
+  const uniqueStudents = studentDays.filter(
+    (sd, idx, arr) => arr.findIndex(s => s.student_id === sd.student_id) === idx
+  );
+  const careStudents = prefilledStudentId
+    ? uniqueStudents
+    : uniqueStudents.filter(sd => sd.has_care_needs || (existing && sd.student_id === existing.student_id));
 
-  const [studentId, setStudentId] = useState(existing?.student_id || '');
+  const [studentId, setStudentId] = useState(existing?.student_id || prefilledStudentId || '');
   const [staffId, setStaffId] = useState(existing?.staff_id || '');
   const [startTime, setStartTime] = useState(existing?.start_time || '08:00');
   const [endTime, setEndTime] = useState(existing?.end_time || '16:00');

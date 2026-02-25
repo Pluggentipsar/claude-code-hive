@@ -12,6 +12,7 @@ import type { CoverageSlot } from '../../types/weekSchedule';
 interface CoverageTimelineProps {
   slots: CoverageSlot[];
   onSlotClick?: (slot: CoverageSlot) => void;
+  variant?: 'standalone' | 'embedded';
 }
 
 const STATUS_COLORS = {
@@ -20,41 +21,19 @@ const STATUS_COLORS = {
   deficit: { bg: 'bg-danger-400', hover: 'hover:bg-danger-500', text: 'text-danger-700' },
 };
 
-export function CoverageTimeline({ slots, onSlotClick }: CoverageTimelineProps) {
-  const [expanded, setExpanded] = useState(false);
+export function CoverageTimeline({ slots, onSlotClick, variant = 'standalone' }: CoverageTimelineProps) {
+  const [expanded, setExpanded] = useState(variant === 'embedded');
   const [hoveredSlot, setHoveredSlot] = useState<CoverageSlot | null>(null);
 
   if (!slots || slots.length === 0) return null;
 
   const deficitCount = slots.filter(s => s.status === 'deficit').length;
-  const maxStudents = Math.max(...slots.map(s => s.students_present), 1);
-  const maxStaff = Math.max(...slots.map(s => s.staff_present), 1);
-  const maxVal = Math.max(maxStudents, maxStaff);
 
   // Time labels: show every 2 hours
   const timeLabels = slots.filter((_s, i) => i % 4 === 0);
 
-  return (
-    <div className="card">
-      {/* Header */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 flex items-center justify-between"
-      >
-        <div className="flex items-center gap-3">
-          <Clock className="h-4 w-4 text-surface-400" />
-          <span className="text-sm font-semibold text-surface-700">Bemanningsöversikt</span>
-          {deficitCount > 0 && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-danger-100 text-danger-700">
-              {deficitCount} tidsluckor med underskott
-            </span>
-          )}
-        </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-surface-400" /> : <ChevronDown className="h-4 w-4 text-surface-400" />}
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 space-y-3">
+  const timelineContent = (
+    <div className={variant === 'embedded' ? 'space-y-3' : 'px-4 pb-4 space-y-3'}>
           {/* Legend */}
           <div className="flex items-center gap-4 text-xs text-surface-500">
             <span className="flex items-center gap-1.5">
@@ -131,8 +110,46 @@ export function CoverageTimeline({ slots, onSlotClick }: CoverageTimelineProps) 
               </div>
             </div>
           )}
+    </div>
+  );
+
+  if (variant === 'embedded') {
+    return (
+      <div>
+        <h4 className="text-xs font-semibold text-surface-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+          <Clock className="h-3.5 w-3.5 text-surface-400" />
+          Bemanningsöversikt
+          {deficitCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-danger-100 text-danger-700 normal-case tracking-normal">
+              {deficitCount} underskott
+            </span>
+          )}
+        </h4>
+        {timelineContent}
+      </div>
+    );
+  }
+
+  return (
+    <div className="card">
+      {/* Header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 flex items-center justify-between"
+      >
+        <div className="flex items-center gap-3">
+          <Clock className="h-4 w-4 text-surface-400" />
+          <span className="text-sm font-semibold text-surface-700">Bemanningsöversikt</span>
+          {deficitCount > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-danger-100 text-danger-700">
+              {deficitCount} tidsluckor med underskott
+            </span>
+          )}
         </div>
-      )}
+        {expanded ? <ChevronUp className="h-4 w-4 text-surface-400" /> : <ChevronDown className="h-4 w-4 text-surface-400" />}
+      </button>
+
+      {expanded && timelineContent}
     </div>
   );
 }

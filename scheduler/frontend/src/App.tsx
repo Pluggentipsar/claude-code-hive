@@ -3,13 +3,13 @@
  */
 
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 import { MainLayout } from './components/Layout/MainLayout';
 import { PageTransition } from './components/Layout/PageTransition';
-import { SchedulePage, StudentsPage, StaffPage, ClassesPage } from './pages';
+import { SchedulePage, StaffPage, ClassesPage } from './pages';
 import { ImportPage } from './pages/ImportPage';
 import { LoginPage } from './pages/LoginPage';
 import { useAuthStore } from './stores/authStore';
@@ -33,7 +33,7 @@ function AnimatedRoutes() {
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<PageTransition><SchedulePage /></PageTransition>} />
-        <Route path="/students" element={<PageTransition><StudentsPage /></PageTransition>} />
+        <Route path="/students" element={<Navigate to="/classes" replace />} />
         <Route path="/staff" element={<PageTransition><StaffPage /></PageTransition>} />
         <Route path="/classes" element={<PageTransition><ClassesPage /></PageTransition>} />
         <Route path="/import" element={<PageTransition><ImportPage /></PageTransition>} />

@@ -194,3 +194,112 @@ export function useWarnings(weekId: string | null) {
     enabled: !!weekId,
   });
 }
+
+// ============================================================
+// Auto-assign
+// ============================================================
+
+export function useAutoAssignDay(weekId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (weekday: number) => weekSchedulesApi.autoAssignDay(weekId, weekday),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dayData', weekId] });
+    },
+  });
+}
+
+// ============================================================
+// Absence impact
+// ============================================================
+
+export function useAbsenceImpact(weekId: string | null, weekday: number, absentStaffIds: string[]) {
+  return useQuery({
+    queryKey: ['absenceImpact', weekId, weekday, absentStaffIds.sort().join(',')],
+    queryFn: () => weekSchedulesApi.getAbsenceImpact(weekId!, weekday, absentStaffIds),
+    enabled: !!weekId && absentStaffIds.length > 0,
+  });
+}
+
+// ============================================================
+// Vulnerabilities
+// ============================================================
+
+export function useVulnerabilities(weekId: string | null) {
+  return useQuery({
+    queryKey: ['vulnerabilities', weekId],
+    queryFn: () => weekSchedulesApi.getVulnerabilities(weekId!),
+    enabled: !!weekId,
+  });
+}
+
+// ============================================================
+// Coverage timeline
+// ============================================================
+
+export function useCoverageTimeline(weekId: string | null, weekday: number) {
+  return useQuery({
+    queryKey: ['coverageTimeline', weekId, weekday],
+    queryFn: () => weekSchedulesApi.getCoverageTimeline(weekId!, weekday),
+    enabled: !!weekId,
+  });
+}
+
+// ============================================================
+// Class balance
+// ============================================================
+
+export function useClassBalance(weekId: string | null, weekday: number) {
+  return useQuery({
+    queryKey: ['classBalance', weekId, weekday],
+    queryFn: () => weekSchedulesApi.getClassBalance(weekId!, weekday),
+    enabled: !!weekId,
+  });
+}
+
+// ============================================================
+// Substitute report
+// ============================================================
+
+export function useSubstituteReport(weekId: string | null) {
+  return useQuery({
+    queryKey: ['substituteReport', weekId],
+    queryFn: () => weekSchedulesApi.getSubstituteReport(weekId!),
+    enabled: !!weekId,
+  });
+}
+
+// ============================================================
+// Auto-suggest assignments
+// ============================================================
+
+export function useSuggestAssignments(weekId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (weekday: number) => weekSchedulesApi.suggestAssignments(weekId, weekday),
+  });
+}
+
+// ============================================================
+// Vulnerability map
+// ============================================================
+
+export function useVulnerabilityMap(weekId: string | null) {
+  return useQuery({
+    queryKey: ['vulnerabilityMap', weekId],
+    queryFn: () => weekSchedulesApi.getVulnerabilityMap(weekId!),
+    enabled: !!weekId,
+  });
+}
+
+// ============================================================
+// Staff wellbeing
+// ============================================================
+
+export function useStaffWellbeing(weekId: string | null) {
+  return useQuery({
+    queryKey: ['staffWellbeing', weekId],
+    queryFn: () => weekSchedulesApi.getStaffWellbeing(weekId!),
+    enabled: !!weekId,
+  });
+}

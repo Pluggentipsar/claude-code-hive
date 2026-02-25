@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Printer } from 'lucide-react';
+import { Printer, Sparkles } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { useStaff } from '../hooks/useStaff';
 import { useStudents } from '../hooks/useStudents';
@@ -21,6 +21,15 @@ import {
   useCreateDayAssignment,
   useUpdateDayAssignment,
   useDeleteDayAssignment,
+  useAutoAssignDay,
+  useAbsenceImpact,
+  useVulnerabilities,
+  useCoverageTimeline,
+  useClassBalance,
+  useSubstituteReport,
+  useSuggestAssignments,
+  useVulnerabilityMap,
+  useStaffWellbeing,
 } from '../hooks/useWeekSchedule';
 import { WeekHeader } from '../components/Schedule/WeekHeader';
 import { DayTabs } from '../components/Schedule/DayTabs';
@@ -41,7 +50,15 @@ import { StaffAbsenceModal } from '../components/Schedule/StaffAbsenceModal';
 import { getDateForWeekday } from '../components/Schedule/StaffAbsencePopover';
 import { ErrorMessage } from '../components/Common/ErrorMessage';
 import { getErrorMessage } from '../api';
-import type { StudentDay, DayAssignment, DayAssignmentCreate, DayAssignmentUpdate, AbsentType } from '../types/weekSchedule';
+import { AbsenceImpactPanel } from '../components/Schedule/AbsenceImpactPanel';
+import { CoverageTimeline } from '../components/Schedule/CoverageTimeline';
+import { ClassBalancing } from '../components/Schedule/ClassBalancing';
+import { SubstituteReport } from '../components/Schedule/SubstituteReport';
+import { AutoSuggestModal } from '../components/Schedule/AutoSuggestModal';
+import { VulnerabilityMap } from '../components/Schedule/VulnerabilityMap';
+import { StaffWellbeingPanel } from '../components/Schedule/StaffWellbeingPanel';
+import { WeekPlanningWizard } from '../components/Schedule/WeekPlanningWizard';
+import type { StudentDay, DayAssignment, DayAssignmentCreate, DayAssignmentUpdate, AbsentType, SuggestedReassignment, AssignmentSuggestion } from '../types/weekSchedule';
 import type { Student } from '../types';
 import { Calendar } from 'lucide-react';
 
@@ -59,6 +76,32 @@ export function SchedulePage() {
   const { data: staffList = [] } = useStaff();
   const { data: students = [] } = useStudents();
   const weekSummary = useWeekSummary(hasSchedule ? weekSchedule.id : null);
+
+  // New data hooks for Phase 1-2 features
+  const absentStaffIdsList = useMemo(() => {
+    if (!dayData) return [];
+    return dayData.warnings
+      .filter(w => w.type === 'absence' && w.staff_id)
+      .map(w => w.staff_id!);
+  }, [dayData]);
+
+  const { data: absenceImpact } = useAbsenceImpact(
+    hasSchedule ? weekSchedule.id : null,
+    selectedWeekday,
+    absentStaffIdsList,
+  );
+  const { data: vulnerabilities } = useVulnerabilities(hasSchedule ? weekSchedule.id : null);
+  const { data: coverageSlots } = useCoverageTimeline(
+    hasSchedule ? weekSchedule.id : null,
+    selectedWeekday,
+  );
+  const { data: classBalance } = useClassBalance(
+    hasSchedule ? weekSchedule.id : null,
+    selectedWeekday,
+  );
+  const { data: substituteReport } = useSubstituteReport(hasSchedule ? weekSchedule.id : null);
+  const { data: vulnerabilityMap } = useVulnerabilityMap(hasSchedule ? weekSchedule.id : null);
+  const { data: staffWellbeing } = useStaffWellbeing(hasSchedule ? weekSchedule.id : null);
 
   const studentMap = useMemo(() => {
     const map = new Map<string, Student>();
@@ -87,6 +130,14 @@ export function SchedulePage() {
   const createDayAssignmentMutation = useCreateDayAssignment(hasSchedule ? weekSchedule.id : '');
   const updateDayAssignmentMutation = useUpdateDayAssignment(hasSchedule ? weekSchedule.id : '');
   const deleteDayAssignmentMutation = useDeleteDayAssignment(hasSchedule ? weekSchedule.id : '');
+  const autoAssignDayMutation = useAutoAssignDay(hasSchedule ? weekSchedule.id : '');
+  const suggestAssignmentsMutation = useSuggestAssignments(hasSchedule ? weekSchedule.id : '');
+
+  // Auto-suggest modal state
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+
+  // Wizard state
+  const [showWizard, setShowWizard] = useState(false);
 
   // DayAssignment modal state
   const [dayAssignmentModal, setDayAssignmentModal] = useState<{
@@ -407,6 +458,21 @@ export function SchedulePage() {
           onToggleStatus={handleToggleStatus}
         />
 
+        {/* Wizard launch button */}
+        {hasSchedule && (
+          <div className="no-print flex justify-end -mt-2">
+            <button
+              onClick={() => setShowWizard(true)}
+              className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg
+                bg-primary-50 text-primary-700 border border-primary-200
+                hover:bg-primary-100 hover:border-primary-300 transition-colors"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Planeringsguide
+            </button>
+          </div>
+        )}
+
         {/* Real errors (not 404) */}
         {weekError && !weekLoading && (
           <ErrorMessage message={`Kunde inte hämta schema: ${getErrorMessage(weekError)}`} />
@@ -445,6 +511,38 @@ export function SchedulePage() {
               Vecka {currentWeek}, {currentYear} — {DAY_NAMES[selectedWeekday]}
             </div>
 
+            {/* Absence Impact Panel — shown when staff are absent */}
+            {absenceImpact && absenceImpact.affected_students.length > 0 && (
+              <div className="no-print">
+                <AbsenceImpactPanel
+                  impact={absenceImpact}
+                  onApplyReassignment={(studentId, period, staffId) => {
+                    const sd = dayData.student_days.find(s => s.student_id === studentId);
+                    if (sd) {
+                      const field = period === 'fm' ? 'fm_staff_id' : 'em_staff_id';
+                      updateStudentDayMutation.mutate({ sdId: sd.id, data: { [field]: staffId } });
+                    }
+                  }}
+                  onApplyAll={(reassignments: SuggestedReassignment[]) => {
+                    for (const r of reassignments) {
+                      const sd = dayData.student_days.find(s => s.student_id === r.student_id);
+                      if (sd) {
+                        const field = r.period === 'fm' ? 'fm_staff_id' : 'em_staff_id';
+                        updateStudentDayMutation.mutate({ sdId: sd.id, data: { [field]: r.suggested_staff_id } });
+                      }
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Coverage Timeline */}
+            {coverageSlots && coverageSlots.length > 0 && (
+              <div className="no-print">
+                <CoverageTimeline slots={coverageSlots} />
+              </div>
+            )}
+
             {/* Filter bar + print button */}
             <div className="no-print">
               <FilterBar
@@ -458,6 +556,12 @@ export function SchedulePage() {
                 onReset={handleResetFilters}
                 resultCount={{ shown: filteredStudentDays.length, total: dayData.student_days.length }}
                 hasActiveFilters={hasActiveFilters}
+                onAutoAssign={() => autoAssignDayMutation.mutate(selectedWeekday)}
+                isAutoAssigning={autoAssignDayMutation.isPending}
+                onSuggestAssignments={() => {
+                  suggestAssignmentsMutation.mutate(selectedWeekday);
+                  setShowSuggestModal(true);
+                }}
               />
             </div>
 
@@ -519,8 +623,39 @@ export function SchedulePage() {
               />
             </div>
 
-            {/* Warning bar */}
-            <WarningBar warnings={dayData.warnings} />
+            {/* Class balancing */}
+            {classBalance && (
+              <div className="no-print">
+                <ClassBalancing data={classBalance} />
+              </div>
+            )}
+
+            {/* Substitute report */}
+            {substituteReport && (
+              <div className="no-print">
+                <SubstituteReport data={substituteReport} />
+              </div>
+            )}
+
+            {/* Vulnerability map */}
+            {vulnerabilityMap && (
+              <div className="no-print">
+                <VulnerabilityMap data={vulnerabilityMap} />
+              </div>
+            )}
+
+            {/* Staff wellbeing */}
+            {staffWellbeing && (
+              <div className="no-print">
+                <StaffWellbeingPanel data={staffWellbeing} />
+              </div>
+            )}
+
+            {/* Warning bar (with vulnerability data) */}
+            <WarningBar
+              warnings={dayData.warnings}
+              vulnerabilities={vulnerabilities?.vulnerabilities}
+            />
           </>
         )}
 
@@ -569,6 +704,53 @@ export function SchedulePage() {
           staffName={absenceModal.staffName}
           absenceDate={getDateForWeekday(currentYear, currentWeek, selectedWeekday)}
           onClose={() => setAbsenceModal(null)}
+        />
+      )}
+
+      {/* Auto-suggest modal */}
+      {showSuggestModal && (
+        <AutoSuggestModal
+          suggestions={suggestAssignmentsMutation.data?.suggestions ?? []}
+          isLoading={suggestAssignmentsMutation.isPending}
+          onApply={(suggestions: AssignmentSuggestion[]) => {
+            for (const s of suggestions) {
+              const field = s.period === 'fm' ? 'fm_staff_id' : 'em_staff_id';
+              updateStudentDayMutation.mutate({ sdId: s.student_day_id, data: { [field]: s.suggested_staff_id } });
+            }
+            setShowSuggestModal(false);
+          }}
+          onClose={() => setShowSuggestModal(false)}
+        />
+      )}
+
+      {/* Week planning wizard */}
+      {showWizard && (
+        <WeekPlanningWizard
+          hasSchedule={hasSchedule}
+          isPublished={weekSchedule?.status === 'published'}
+          onClose={() => setShowWizard(false)}
+          onCreateWeek={() => { handleCreateWeek(); setShowWizard(false); }}
+          onCopyWeek={() => { handleCopyWeek(); setShowWizard(false); }}
+          onAutoAssign={() => {
+            for (let d = 0; d < 5; d++) autoAssignDayMutation.mutate(d);
+            setShowWizard(false);
+          }}
+          onPublish={() => {
+            if (weekSchedule) {
+              updateWeekMutation.mutate({ weekId: weekSchedule.id, data: { status: 'published' } });
+            }
+            setShowWizard(false);
+          }}
+          onGoToStep={(step) => {
+            setShowWizard(false);
+            // Steps 4-6 just scroll to the relevant section
+          }}
+          completedSteps={new Set(
+            [
+              hasSchedule ? 1 : null,
+              weekSchedule?.status === 'published' ? 7 : null,
+            ].filter((n): n is number => n !== null)
+          )}
         />
       )}
 

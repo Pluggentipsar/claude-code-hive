@@ -31,6 +31,7 @@ class WarningType(str, Enum):
     GAP = "gap"
     WORKLOAD = "workload"
     ABSENCE = "absence"
+    VULNERABILITY = "vulnerability"
 
 
 # --- WeekSchedule ---

@@ -65,6 +65,9 @@ class Staff(Base):
     # Grade group — which stage the staff primarily works with (nullable = works both)
     grade_group = Column(SQLEnum(StaffGradeGroup), nullable=True, index=True)
 
+    # Friday rotation group (1-4, nullable = not in rotation)
+    friday_rotation_group = Column(Integer, nullable=True)
+
     # Default shifts per weekday (JSON): {"0": {"start": "07:00", "end": "16:00", "break": 30}, ...}
     default_shifts = Column(JSONType, default=dict, nullable=False)
 

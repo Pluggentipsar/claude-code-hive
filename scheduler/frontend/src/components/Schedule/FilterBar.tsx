@@ -2,7 +2,7 @@
  * FilterBar — compact filter row above the student/staff tables.
  */
 
-import { Search, X } from 'lucide-react';
+import { Search, X, Wand2, Eye } from 'lucide-react';
 
 export type QuickFilter = 'all' | 'missing_staff' | 'special_needs' | 'warnings';
 
@@ -17,6 +17,9 @@ interface FilterBarProps {
   onReset: () => void;
   resultCount: { shown: number; total: number };
   hasActiveFilters: boolean;
+  onAutoAssign?: () => void;
+  isAutoAssigning?: boolean;
+  onSuggestAssignments?: () => void;
 }
 
 export function FilterBar({
@@ -30,6 +33,9 @@ export function FilterBar({
   onReset,
   resultCount,
   hasActiveFilters,
+  onAutoAssign,
+  isAutoAssigning,
+  onSuggestAssignments,
 }: FilterBarProps) {
   return (
     <div className="card px-4 py-2.5 flex items-center gap-3 flex-wrap">
@@ -70,6 +76,36 @@ export function FilterBar({
         <option value="special_needs">Specialbehov</option>
         <option value="warnings">Varningar</option>
       </select>
+
+      {/* Auto-assign buttons */}
+      {onAutoAssign && (
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onAutoAssign}
+            disabled={isAutoAssigning}
+            className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg
+              bg-primary-50 text-primary-700 border border-primary-200
+              hover:bg-primary-100 hover:border-primary-300
+              disabled:opacity-50 disabled:cursor-not-allowed
+              transition-colors"
+          >
+            <Wand2 className={`h-3.5 w-3.5 ${isAutoAssigning ? 'animate-spin' : ''}`} />
+            {isAutoAssigning ? 'Tilldelar...' : 'Auto-tilldela'}
+          </button>
+          {onSuggestAssignments && (
+            <button
+              onClick={onSuggestAssignments}
+              className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg
+                bg-surface-50 text-surface-700 border border-surface-200
+                hover:bg-surface-100 hover:border-surface-300
+                transition-colors"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              Förhandsgranska
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Reset button */}
       {hasActiveFilters && (

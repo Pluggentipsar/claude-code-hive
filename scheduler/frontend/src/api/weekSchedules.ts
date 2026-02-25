@@ -20,6 +20,14 @@ import type {
   StaffShiftUpdate,
   DayData,
   WarningsResponse,
+  AbsenceImpactResult,
+  VulnerabilityResponse,
+  CoverageSlot,
+  ClassBalanceResponse,
+  SubstituteReportResponse,
+  SuggestAssignmentsResponse,
+  VulnerabilityMapResponse,
+  StaffWellbeingResponse,
 } from '../types/weekSchedule';
 
 export const weekSchedulesApi = {
@@ -82,4 +90,40 @@ export const weekSchedulesApi = {
   // Warnings
   getWarnings: (weekId: string) =>
     apiClient.get<WarningsResponse>(`/weeks/${weekId}/warnings`).then(r => r.data),
+
+  // Auto-assign (re-run smart matching for a day)
+  autoAssignDay: (weekId: string, weekday: number) =>
+    apiClient.post<DayData>(`/weeks/${weekId}/days/${weekday}/auto-assign`).then(r => r.data),
+
+  // Absence impact analysis
+  getAbsenceImpact: (weekId: string, weekday: number, absentStaffIds: string[]) =>
+    apiClient.post<AbsenceImpactResult>(`/weeks/${weekId}/days/${weekday}/absence-impact`, { absent_staff_ids: absentStaffIds }).then(r => r.data),
+
+  // Vulnerability check
+  getVulnerabilities: (weekId: string) =>
+    apiClient.get<VulnerabilityResponse>(`/weeks/${weekId}/vulnerabilities`).then(r => r.data),
+
+  // Coverage timeline
+  getCoverageTimeline: (weekId: string, weekday: number) =>
+    apiClient.get<CoverageSlot[]>(`/weeks/${weekId}/days/${weekday}/coverage-timeline`).then(r => r.data),
+
+  // Class balance
+  getClassBalance: (weekId: string, weekday: number) =>
+    apiClient.get<ClassBalanceResponse>(`/weeks/${weekId}/class-balance?weekday=${weekday}`).then(r => r.data),
+
+  // Substitute report
+  getSubstituteReport: (weekId: string) =>
+    apiClient.get<SubstituteReportResponse>(`/weeks/${weekId}/substitute-report`).then(r => r.data),
+
+  // Auto-suggest assignments (preview without applying)
+  suggestAssignments: (weekId: string, weekday: number) =>
+    apiClient.post<SuggestAssignmentsResponse>(`/weeks/${weekId}/days/${weekday}/suggest-assignments`).then(r => r.data),
+
+  // Vulnerability map (student × weekday risk matrix)
+  getVulnerabilityMap: (weekId: string) =>
+    apiClient.get<VulnerabilityMapResponse>(`/weeks/${weekId}/vulnerability-map`).then(r => r.data),
+
+  // Staff wellbeing analysis
+  getStaffWellbeing: (weekId: string) =>
+    apiClient.get<StaffWellbeingResponse>(`/weeks/${weekId}/staff-wellbeing`).then(r => r.data),
 };

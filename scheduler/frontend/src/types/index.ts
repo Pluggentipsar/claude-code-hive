@@ -106,6 +106,7 @@ export interface Staff {
   last_name: string;
   role: StaffRole;
   grade_group: StaffGradeGroup | null;
+  friday_rotation_group: number | null;
   care_certifications: string[];
   schedule_type: ScheduleType;
   employment_start: string;

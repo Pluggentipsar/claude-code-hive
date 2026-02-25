@@ -11,7 +11,8 @@ Simple, practical checks:
 from uuid import UUID
 from sqlalchemy.orm import Session
 
-from app.models import StudentDay, StaffShift, DayAssignment, Absence, Staff, Student
+from app.models import StudentDay, StaffShift, DayAssignment, Absence, Staff, Student, SchoolClass
+from app.models.school_class import TeamMeeting
 from app.schemas.week_schedule import Warning, WarningSeverity, WarningType
 
 
@@ -42,6 +43,8 @@ def validate_day(
     warnings.extend(_check_conflicts(student_days, day_assignments, db))
     warnings.extend(_check_gaps(student_days, db))
     warnings.extend(_check_absence_conflicts(student_days, day_assignments, weekday, db))
+    warnings.extend(_check_al_coverage(student_days, weekday, db))
+    warnings.extend(_check_vulnerability(student_days, weekday, db))
 
     return warnings
 
@@ -207,6 +210,118 @@ def _check_absence_conflicts(
             staff_id=staff_id,
             weekday=weekday,
         ))
+
+    return warnings
+
+
+def _check_al_coverage(
+    student_days: list[StudentDay],
+    weekday: int,
+    db: Session,
+) -> list[Warning]:
+    """Check if students with care needs during AL time have staff coverage."""
+    warnings = []
+
+    # Get team meetings for this weekday
+    # TeamMeeting.weekday is stored as string like "monday"
+    weekday_names = ["monday", "tuesday", "wednesday", "thursday", "friday"]
+    if weekday >= len(weekday_names):
+        return warnings
+    weekday_name = weekday_names[weekday]
+
+    team_meetings = (
+        db.query(TeamMeeting)
+        .filter(TeamMeeting.weekday == weekday_name)
+        .all()
+    )
+
+    if not team_meetings:
+        return warnings
+
+    # Build class-to-meeting map
+    class_meetings: dict = {}  # class_id -> (start, end)
+    for tm in team_meetings:
+        class_meetings[str(tm.class_id)] = (tm.start_time, tm.end_time)
+
+    # Check students whose class has AL and who have care needs during that time
+    for sd in student_days:
+        student = db.query(Student).get(sd.student_id)
+        if not student or not student.class_id:
+            continue
+
+        meeting = class_meetings.get(str(student.class_id))
+        if not meeting:
+            continue
+
+        al_start, al_end = meeting
+        # Student is present during AL?
+        arrival = sd.arrival_time or "08:00"
+        departure = sd.departure_time or "16:00"
+
+        if arrival < al_end and departure > al_start:
+            # Student is present during AL — check if they have care needs
+            if student.has_care_needs:
+                # Check if fm/em staff covers the AL period
+                has_coverage = False
+                if sd.fm_staff_id and al_start < "12:00":
+                    has_coverage = True
+                if sd.em_staff_id and al_end > "12:00":
+                    has_coverage = True
+
+                if not has_coverage:
+                    school_class = db.query(SchoolClass).get(student.class_id)
+                    class_name = school_class.name if school_class else "Okänd klass"
+                    warnings.append(Warning(
+                        type=WarningType.GAP,
+                        severity=WarningSeverity.WARNING,
+                        message=f"{student.full_name} har omsorgsbehov under {class_name}s AL ({al_start}-{al_end}) men saknar ersättare",
+                        student_id=sd.student_id,
+                        weekday=weekday,
+                        time=al_start,
+                    ))
+
+    return warnings
+
+
+def _check_vulnerability(
+    student_days: list[StudentDay],
+    weekday: int,
+    db: Session,
+) -> list[Warning]:
+    """Check for single-point-of-failure in today's assignments."""
+    warnings = []
+
+    # Get all active staff with their certifications
+    all_staff = db.query(Staff).filter(Staff.active == True).all()  # noqa: E712
+    cert_staff_map: dict[str, list] = {}
+    for staff in all_staff:
+        for cert in (staff.care_certifications or []):
+            cert_staff_map.setdefault(cert, []).append(staff)
+
+    seen_students = set()
+    for sd in student_days:
+        if str(sd.student_id) in seen_students:
+            continue
+        seen_students.add(str(sd.student_id))
+
+        student = db.query(Student).get(sd.student_id)
+        if not student or not student.has_care_needs:
+            continue
+
+        for req in (student.care_requirements or []):
+            qualified = cert_staff_map.get(req, [])
+            if len(qualified) <= 1:
+                if len(qualified) == 0:
+                    msg = f"{student.full_name}: ingen personal har certifiering '{req}'"
+                else:
+                    msg = f"{student.full_name}: bara {qualified[0].full_name} kan hantera '{req}'"
+                warnings.append(Warning(
+                    type=WarningType.VULNERABILITY,
+                    severity=WarningSeverity.WARNING if len(qualified) == 1 else WarningSeverity.ERROR,
+                    message=msg,
+                    student_id=sd.student_id,
+                    weekday=weekday,
+                ))
 
     return warnings
 

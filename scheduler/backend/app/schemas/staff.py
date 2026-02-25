@@ -18,6 +18,7 @@ class StaffCreate(BaseModel):
     last_name: str = Field(..., min_length=1, max_length=100)
     role: StaffRole
     grade_group: Optional[StaffGradeGroup] = None
+    friday_rotation_group: Optional[int] = Field(None, ge=1, le=4)
     care_certifications: List[str] = []
     schedule_type: ScheduleType = ScheduleType.FIXED
     default_shifts: Optional[dict] = None
@@ -30,6 +31,7 @@ class StaffUpdate(BaseModel):
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     role: Optional[StaffRole] = None
     grade_group: Optional[StaffGradeGroup] = None
+    friday_rotation_group: Optional[int] = Field(None, ge=1, le=4)
     care_certifications: Optional[List[str]] = None
     schedule_type: Optional[ScheduleType] = None
     active: Optional[bool] = None
@@ -45,6 +47,7 @@ class StaffResponse(BaseModel):
     last_name: str
     role: StaffRole
     grade_group: Optional[StaffGradeGroup] = None
+    friday_rotation_group: Optional[int] = None
     care_certifications: List[str]
     schedule_type: ScheduleType
     default_shifts: dict = {}

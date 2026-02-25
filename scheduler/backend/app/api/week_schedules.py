@@ -22,6 +22,11 @@ from app.schemas.week_schedule import (
     DayDataResponse, WarningsResponse,
 )
 from app.services.schedule_validator import validate_day, validate_week
+from app.services.absence_impact import compute_absence_impact
+from app.services.vulnerability_check import check_vulnerabilities
+from app.services.hourly_coverage import compute_coverage_timeline
+from app.services.vulnerability_map import compute_vulnerability_map
+from app.services.staff_wellbeing import compute_staff_wellbeing
 
 router = APIRouter()
 
@@ -374,9 +379,375 @@ def get_warnings(week_id: UUID, db: Session = Depends(get_db)):
         "gaps": sum(1 for w in warnings if w.type == "gap"),
         "workload_issues": sum(1 for w in warnings if w.type == "workload"),
         "absence_issues": sum(1 for w in warnings if w.type == "absence"),
+        "vulnerability_issues": sum(1 for w in warnings if w.type == "vulnerability"),
     }
 
     return WarningsResponse(warnings=warnings, summary=summary)
+
+
+# ============================================================
+# Auto-assign (re-run smart matching for a specific day)
+# ============================================================
+
+@router.post("/weeks/{week_id}/days/{weekday}/auto-assign", response_model=DayDataResponse)
+def auto_assign_day(week_id: UUID, weekday: int, db: Session = Depends(get_db)):
+    """Re-run smart auto-assignment for a specific day, clearing existing FM/EM assignments first."""
+    if weekday < 0 or weekday > 4:
+        raise HTTPException(status_code=400, detail="Veckodag måste vara 0-4")
+
+    ws = db.query(WeekSchedule).get(week_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+
+    # Clear existing FM/EM assignments for this day
+    student_days = (
+        db.query(StudentDay)
+        .filter(StudentDay.week_schedule_id == week_id, StudentDay.weekday == weekday)
+        .all()
+    )
+    for sd in student_days:
+        sd.fm_staff_id = None
+        sd.em_staff_id = None
+    db.flush()
+
+    # Re-run smart assignment for just this day
+    all_students = {
+        str(s.id): s
+        for s in db.query(Student).filter(Student.active == True).all()  # noqa: E712
+    }
+
+    all_day_assignments = (
+        db.query(DayAssignment)
+        .filter(DayAssignment.week_schedule_id == ws.id)
+        .all()
+    )
+    da_map: dict[tuple, set] = {}
+    for da in all_day_assignments:
+        key = (str(da.student_id), da.weekday)
+        da_map.setdefault(key, set()).add(str(da.staff_id))
+
+    staff_shifts = (
+        db.query(StaffShift)
+        .filter(StaffShift.week_schedule_id == ws.id, StaffShift.weekday == weekday)
+        .all()
+    )
+
+    staff_info: dict[str, tuple] = {}
+    for ss in staff_shifts:
+        staff = db.query(Staff).get(ss.staff_id)
+        if staff and staff.role != StaffRole.TEACHER:
+            staff_info[str(staff.id)] = (staff, ss)
+
+    fm_available = [
+        (s, ss) for s, ss in staff_info.values()
+        if ss.start_time and ss.start_time < "08:30"
+    ]
+    em_available = [
+        (s, ss) for s, ss in staff_info.values()
+        if ss.end_time and ss.end_time > "13:30"
+    ]
+
+    fm_needs = [
+        (sd, all_students.get(str(sd.student_id)))
+        for sd in student_days
+        if sd.arrival_time and sd.arrival_time < "08:30"
+    ]
+    em_needs = [
+        (sd, all_students.get(str(sd.student_id)))
+        for sd in student_days
+        if sd.departure_time and sd.departure_time > "13:30"
+    ]
+
+    _smart_assign(fm_needs, fm_available, "fm_staff_id", da_map, weekday)
+    _smart_assign(em_needs, em_available, "em_staff_id", da_map, weekday)
+
+    db.commit()
+
+    # Return refreshed day data
+    student_days = (
+        db.query(StudentDay)
+        .filter(StudentDay.week_schedule_id == week_id, StudentDay.weekday == weekday)
+        .all()
+    )
+    staff_shifts = (
+        db.query(StaffShift)
+        .filter(StaffShift.week_schedule_id == week_id, StaffShift.weekday == weekday)
+        .all()
+    )
+    day_assignments = (
+        db.query(DayAssignment)
+        .filter(DayAssignment.week_schedule_id == week_id, DayAssignment.weekday == weekday)
+        .all()
+    )
+    warnings = validate_day(db, week_id, weekday)
+
+    return DayDataResponse(
+        weekday=weekday,
+        student_days=[_enrich_student_day(sd, db) for sd in student_days],
+        staff_shifts=[_enrich_staff_shift(ss, db) for ss in staff_shifts],
+        day_assignments=[_enrich_day_assignment(da, db) for da in day_assignments],
+        warnings=warnings,
+    )
+
+
+# ============================================================
+# Absence impact analysis
+# ============================================================
+
+@router.post("/weeks/{week_id}/days/{weekday}/absence-impact")
+def get_absence_impact(
+    week_id: UUID,
+    weekday: int,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """Analyze the impact of staff absences on a specific day."""
+    if weekday < 0 or weekday > 4:
+        raise HTTPException(status_code=400, detail="Veckodag måste vara 0-4")
+
+    ws = db.query(WeekSchedule).get(week_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+
+    absent_staff_ids = body.get("absent_staff_ids", [])
+    if not absent_staff_ids:
+        raise HTTPException(status_code=400, detail="Inga frånvarande personalID angivna")
+
+    return compute_absence_impact(db, week_id, weekday, absent_staff_ids)
+
+
+# ============================================================
+# Vulnerability check
+# ============================================================
+
+@router.get("/weeks/{week_id}/vulnerabilities")
+def get_vulnerabilities(week_id: UUID, db: Session = Depends(get_db)):
+    """Check for single-point-of-failure vulnerabilities."""
+    ws = db.query(WeekSchedule).get(week_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+
+    return check_vulnerabilities(db)
+
+
+# ============================================================
+# Coverage timeline
+# ============================================================
+
+@router.get("/weeks/{week_id}/days/{weekday}/coverage-timeline")
+def get_coverage_timeline(week_id: UUID, weekday: int, db: Session = Depends(get_db)):
+    """Get hourly coverage timeline for a specific day."""
+    if weekday < 0 or weekday > 4:
+        raise HTTPException(status_code=400, detail="Veckodag måste vara 0-4")
+
+    ws = db.query(WeekSchedule).get(week_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+
+    return compute_coverage_timeline(db, week_id, weekday)
+
+
+# ============================================================
+# Class balance
+# ============================================================
+
+@router.get("/weeks/{week_id}/class-balance")
+def get_class_balance(week_id: UUID, weekday: int = 0, db: Session = Depends(get_db)):
+    """Get class balance analysis for a specific day."""
+    if weekday < 0 or weekday > 4:
+        raise HTTPException(status_code=400, detail="Veckodag måste vara 0-4")
+
+    ws = db.query(WeekSchedule).get(week_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+
+    from app.services.class_balance import compute_class_balance
+    return compute_class_balance(db, week_id, weekday)
+
+
+# ============================================================
+# Substitute report
+# ============================================================
+
+@router.get("/weeks/{week_id}/substitute-report")
+def get_substitute_report(week_id: UUID, db: Session = Depends(get_db)):
+    """Generate a substitute needs report for the entire week."""
+    ws = db.query(WeekSchedule).get(week_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+
+    from app.services.substitute_report import compute_substitute_report
+    return compute_substitute_report(db, ws)
+
+
+# ============================================================
+# Auto-suggest assignments with preview
+# ============================================================
+
+@router.post("/weeks/{week_id}/days/{weekday}/suggest-assignments")
+def suggest_assignments(week_id: UUID, weekday: int, db: Session = Depends(get_db)):
+    """Generate suggested assignments for a day without applying them.
+
+    Returns a list of suggestions with scores that the user can approve/reject.
+    """
+    if weekday < 0 or weekday > 4:
+        raise HTTPException(status_code=400, detail="Veckodag måste vara 0-4")
+
+    ws = db.query(WeekSchedule).get(week_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+
+    all_students = {
+        str(s.id): s
+        for s in db.query(Student).filter(Student.active == True).all()  # noqa: E712
+    }
+
+    all_day_assignments = (
+        db.query(DayAssignment)
+        .filter(DayAssignment.week_schedule_id == ws.id)
+        .all()
+    )
+    da_map: dict[tuple, set] = {}
+    for da in all_day_assignments:
+        key = (str(da.student_id), da.weekday)
+        da_map.setdefault(key, set()).add(str(da.staff_id))
+
+    student_days = (
+        db.query(StudentDay)
+        .filter(StudentDay.week_schedule_id == ws.id, StudentDay.weekday == weekday)
+        .all()
+    )
+    staff_shifts = (
+        db.query(StaffShift)
+        .filter(StaffShift.week_schedule_id == ws.id, StaffShift.weekday == weekday)
+        .all()
+    )
+
+    staff_info: dict[str, tuple] = {}
+    for ss in staff_shifts:
+        staff = db.query(Staff).get(ss.staff_id)
+        if staff and staff.role != StaffRole.TEACHER:
+            staff_info[str(staff.id)] = (staff, ss)
+
+    fm_available = [
+        (s, ss) for s, ss in staff_info.values()
+        if ss.start_time and ss.start_time < "08:30"
+    ]
+    em_available = [
+        (s, ss) for s, ss in staff_info.values()
+        if ss.end_time and ss.end_time > "13:30"
+    ]
+
+    suggestions = []
+    counts: dict[str, int] = {str(s.id): 0 for s, _ in staff_info.values()}
+
+    for sd in student_days:
+        student = all_students.get(str(sd.student_id))
+        if not student:
+            continue
+
+        da_staff_ids = da_map.get((str(student.id), weekday), set())
+        max_count = max(len(student_days) // max(len(fm_available) or 1, 1), 1)
+
+        # FM suggestion
+        needs_fm = sd.arrival_time and sd.arrival_time < "08:30"
+        if needs_fm:
+            current_fm = str(sd.fm_staff_id) if sd.fm_staff_id else None
+            best_score = -1
+            best_staff = None
+            for staff, _ss in fm_available:
+                eligible, score = _compute_match_score(staff, student, counts, max_count, da_staff_ids)
+                if eligible and score > best_score:
+                    best_score = score
+                    best_staff = staff
+
+            if best_staff and str(best_staff.id) != current_fm:
+                suggestions.append({
+                    "student_day_id": str(sd.id),
+                    "student_id": str(student.id),
+                    "student_name": student.full_name,
+                    "period": "fm",
+                    "current_staff_id": current_fm,
+                    "current_staff_name": None,
+                    "suggested_staff_id": str(best_staff.id),
+                    "suggested_staff_name": best_staff.full_name,
+                    "score": round(best_score, 1),
+                    "reason": _explain_score(best_staff, student, da_staff_ids),
+                })
+
+        # EM suggestion
+        needs_em = sd.departure_time and sd.departure_time > "13:30"
+        if needs_em:
+            current_em = str(sd.em_staff_id) if sd.em_staff_id else None
+            best_score = -1
+            best_staff = None
+            for staff, _ss in em_available:
+                eligible, score = _compute_match_score(staff, student, counts, max_count, da_staff_ids)
+                if eligible and score > best_score:
+                    best_score = score
+                    best_staff = staff
+
+            if best_staff and str(best_staff.id) != current_em:
+                suggestions.append({
+                    "student_day_id": str(sd.id),
+                    "student_id": str(student.id),
+                    "student_name": student.full_name,
+                    "period": "em",
+                    "current_staff_id": current_em,
+                    "current_staff_name": None,
+                    "suggested_staff_id": str(best_staff.id),
+                    "suggested_staff_name": best_staff.full_name,
+                    "score": round(best_score, 1),
+                    "reason": _explain_score(best_staff, student, da_staff_ids),
+                })
+
+    # Sort by score descending
+    suggestions.sort(key=lambda x: x["score"], reverse=True)
+
+    return {"suggestions": suggestions, "total": len(suggestions)}
+
+
+def _explain_score(staff: Staff, student: Student, da_staff_ids: set) -> str:
+    """Generate a human-readable explanation for a match score."""
+    reasons = []
+    preferred = set(str(pid) for pid in (student.preferred_staff or []))
+    if str(staff.id) in preferred:
+        reasons.append("Föredragen personal")
+    care_reqs = set(student.care_requirements or [])
+    staff_certs = set(staff.care_certifications or [])
+    if care_reqs and care_reqs.issubset(staff_certs):
+        reasons.append("Matchande certifiering")
+    if str(staff.id) in da_staff_ids:
+        reasons.append("Redan specialtilldelad")
+    if not reasons:
+        reasons.append("Bra matchning")
+    return ", ".join(reasons)
+
+
+# ============================================================
+# Vulnerability map (student × weekday matrix)
+# ============================================================
+
+@router.get("/weeks/{week_id}/vulnerability-map")
+def get_vulnerability_map(week_id: UUID, db: Session = Depends(get_db)):
+    """Get a risk matrix: students with care needs × weekdays."""
+    ws = db.query(WeekSchedule).filter(WeekSchedule.id == week_id).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+    return compute_vulnerability_map(db, ws.id)
+
+
+# ============================================================
+# Staff wellbeing
+# ============================================================
+
+@router.get("/weeks/{week_id}/staff-wellbeing")
+def get_staff_wellbeing(week_id: UUID, db: Session = Depends(get_db)):
+    """Analyze staff workload and wellbeing across the week."""
+    ws = db.query(WeekSchedule).filter(WeekSchedule.id == week_id).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Veckoschema hittades inte")
+    return compute_staff_wellbeing(db, ws.id)
 
 
 # ============================================================
@@ -424,7 +795,12 @@ def _populate_student_days(db: Session, ws: WeekSchedule):
 
 
 def _populate_staff_shifts(db: Session, ws: WeekSchedule):
-    """Pre-populate staff_shifts from WorkHour records."""
+    """Pre-populate staff_shifts from WorkHour records.
+
+    Handles Friday rotation: staff with friday_rotation_group are assigned
+    one of 4 rotation patterns. The active group for a week is determined by
+    week_number % 4 + 1.
+    """
     staff_members = db.query(Staff).filter(Staff.active == True).all()  # noqa: E712
 
     # Build a lookup: (staff_id, weekday) -> WorkHour
@@ -436,8 +812,17 @@ def _populate_staff_shifts(db: Session, ws: WeekSchedule):
         if key not in wh_map or wh.week_number == 0:
             wh_map[key] = wh
 
+    # Friday rotation: determine which group is active this week
+    active_friday_group = (ws.week_number % 4) + 1  # 1-4
+
     for staff in staff_members:
         for weekday in range(5):
+            # Friday rotation check: skip Friday shift if staff is in a
+            # rotation group that is not active this week
+            if weekday == 4 and staff.friday_rotation_group is not None:
+                if staff.friday_rotation_group != active_friday_group:
+                    continue
+
             wh = wh_map.get((str(staff.id), weekday))
             if wh:
                 # Calculate break minutes from lunch times
@@ -447,6 +832,10 @@ def _populate_staff_shifts(db: Session, ws: WeekSchedule):
                     eh, em = int(wh.lunch_end.split(":")[0]), int(wh.lunch_end.split(":")[1])
                     break_mins = (eh * 60 + em) - (lh * 60 + lm)
 
+                notes = None
+                if weekday == 4 and staff.friday_rotation_group is not None:
+                    notes = f"Fredagsgrupp {staff.friday_rotation_group}"
+
                 db.add(StaffShift(
                     week_schedule_id=ws.id,
                     staff_id=staff.id,
@@ -454,24 +843,41 @@ def _populate_staff_shifts(db: Session, ws: WeekSchedule):
                     start_time=wh.start_time,
                     end_time=wh.end_time,
                     break_minutes=break_mins,
+                    notes=notes,
                 ))
 
 
 def _auto_assign_staff(db: Session, ws: WeekSchedule):
-    """Auto-assign FM/EM staff to students based on grade group and workload balance.
+    """Auto-assign FM/EM staff to students using smart score-based matching.
 
     FM = students arriving before 08:30 (morning care).
     EM = students departing after 13:30 (afternoon care).
 
     Only fritidspedagoger and elevassistenter are assigned (not teachers).
-    Prefers staff in the same grade group as the student; falls back to all available.
-    Balances student count across staff within each pool.
+    Uses a score-based system considering:
+      - HARD: care_certifications must match care_requirements
+      - preferred_staff match: +50
+      - Certification match: +30
+      - Same grade group: +20
+      - Already has DayAssignment with this staff: +15
+      - Low workload bonus: +10 * (1 - load/max)
     """
-    # Pre-load all students for grade info
     all_students = {
         str(s.id): s
         for s in db.query(Student).filter(Student.active == True).all()  # noqa: E712
     }
+
+    # Pre-load DayAssignments for bonus scoring
+    all_day_assignments = (
+        db.query(DayAssignment)
+        .filter(DayAssignment.week_schedule_id == ws.id)
+        .all()
+    )
+    # Map: (student_id, weekday) -> set of staff_ids
+    da_map: dict[tuple, set] = {}
+    for da in all_day_assignments:
+        key = (str(da.student_id), da.weekday)
+        da_map.setdefault(key, set()).add(str(da.staff_id))
 
     for weekday in range(5):
         student_days = (
@@ -515,46 +921,109 @@ def _auto_assign_staff(db: Session, ws: WeekSchedule):
             if sd.departure_time and sd.departure_time > "13:30"
         ]
 
-        # Assign with grade-group preference and load balancing
-        _balanced_assign(fm_needs, fm_available, "fm_staff_id")
-        _balanced_assign(em_needs, em_available, "em_staff_id")
+        # Assign with smart scoring
+        _smart_assign(fm_needs, fm_available, "fm_staff_id", da_map, weekday)
+        _smart_assign(em_needs, em_available, "em_staff_id", da_map, weekday)
 
     db.flush()
 
 
-def _balanced_assign(
+def _compute_match_score(
+    staff: Staff,
+    student: Student,
+    counts: dict[str, int],
+    max_count: int,
+    da_staff_ids: set,
+) -> tuple[bool, float]:
+    """Compute a match score between a staff member and a student.
+
+    Returns (is_eligible, score).
+    is_eligible is False if the student has care_requirements that the staff cannot meet.
+    """
+    care_reqs = set(student.care_requirements or [])
+    staff_certs = set(staff.care_certifications or [])
+
+    # HARD constraint: if student has care requirements, staff MUST have matching certs
+    if care_reqs and not care_reqs.issubset(staff_certs):
+        return False, 0.0
+
+    score = 0.0
+
+    # Preferred staff bonus (+50)
+    preferred = set(str(pid) for pid in (student.preferred_staff or []))
+    if str(staff.id) in preferred:
+        score += 50
+
+    # Certification match bonus (+30) — staff has relevant certs even if not required
+    if care_reqs and care_reqs.issubset(staff_certs):
+        score += 30
+
+    # Same grade group bonus (+20)
+    student_grade_group = StaffGradeGroup.GRADES_1_3 if (student.grade or 99) <= 3 else StaffGradeGroup.GRADES_4_6
+    if staff.grade_group is None or staff.grade_group == student_grade_group:
+        score += 20
+
+    # Already assigned via DayAssignment (+15)
+    if str(staff.id) in da_staff_ids:
+        score += 15
+
+    # Low workload bonus (+10 * (1 - load/max))
+    current_load = counts.get(str(staff.id), 0)
+    if max_count > 0:
+        score += 10 * (1 - current_load / max(max_count, 1))
+    else:
+        score += 10
+
+    return True, score
+
+
+def _smart_assign(
     student_needs: list[tuple],  # [(StudentDay, Student), ...]
     available_staff: list[tuple],  # [(Staff, StaffShift), ...]
     field: str,  # 'fm_staff_id' or 'em_staff_id'
+    da_map: dict[tuple, set],
+    weekday: int,
 ):
-    """Assign staff to students, matching grade group and balancing workload."""
+    """Assign staff to students using score-based smart matching."""
     if not available_staff or not student_needs:
         return
 
-    # Split staff by grade group (None = works with both → appears in both pools)
-    low_staff = [
-        pair for pair in available_staff
-        if pair[0].grade_group in (StaffGradeGroup.GRADES_1_3, None)
-    ]
-    high_staff = [
-        pair for pair in available_staff
-        if pair[0].grade_group in (StaffGradeGroup.GRADES_4_6, None)
-    ]
-
-    # Shared assignment counter for load balancing
+    # Assignment counter for load balancing
     counts: dict[str, int] = {str(s.id): 0 for s, _ in available_staff}
+    max_count = max(len(student_needs) // max(len(available_staff), 1), 1)
 
-    for sd, student in student_needs:
+    # Sort students: care needs first (they have harder constraints)
+    student_needs_sorted = sorted(
+        student_needs,
+        key=lambda pair: (
+            not (pair[1].has_care_needs if pair[1] else False),
+            not bool(pair[1].care_requirements if pair[1] else []),
+        ),
+    )
+
+    for sd, student in student_needs_sorted:
         if not student:
             continue
 
-        grade = student.grade or 99
-        pool = low_staff if grade <= 3 else high_staff
-        if not pool:
-            pool = available_staff  # fallback if no matching grade group
+        da_staff_ids = da_map.get((str(student.id), weekday), set())
 
-        # Pick the least-loaded staff member from the pool
-        best_staff, _ = min(pool, key=lambda pair: counts.get(str(pair[0].id), 0))
+        # Score all available staff
+        candidates: list[tuple[float, Staff]] = []
+        for staff, _ss in available_staff:
+            eligible, score = _compute_match_score(staff, student, counts, max_count, da_staff_ids)
+            if eligible:
+                candidates.append((score, staff))
+
+        if not candidates:
+            # Fallback: pick least-loaded staff ignoring hard constraints
+            best_staff, _ = min(available_staff, key=lambda pair: counts.get(str(pair[0].id), 0))
+            setattr(sd, field, best_staff.id)
+            counts[str(best_staff.id)] = counts.get(str(best_staff.id), 0) + 1
+            continue
+
+        # Pick highest-scoring staff
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best_staff = candidates[0][1]
         setattr(sd, field, best_staff.id)
         counts[str(best_staff.id)] = counts.get(str(best_staff.id), 0) + 1
 
